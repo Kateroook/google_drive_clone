@@ -1,0 +1,38 @@
+﻿<Window x:Class="ClientApp.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ClientApp.Views"
+        mc:Ignorable="d"
+        Title="File Manager" Height="450" Width="800" WindowStartupLocation="CenterScreen">
+    <DockPanel>
+        <!-- Toolbar -->
+        <ToolBar DockPanel.Dock="Top">
+            <Button Content="Upload" Click="Upload_Click"/>
+            <Button Content="Download" Click="Download_Click"/>
+            <Button Content="Delete" Click="Delete_Click"/>
+            <Separator/>
+            <ComboBox x:Name="FilterBox" Width="120" SelectionChanged="FilterBox_SelectionChanged">
+                <ComboBoxItem Content="All"/>
+                <ComboBoxItem Content=".py"/>
+                <ComboBoxItem Content=".jpg"/>
+            </ComboBox>
+            <Separator/>
+            <Button Content="Sort ↑" Click="SortAsc_Click"/>
+            <Button Content="Sort ↓" Click="SortDesc_Click"/>
+        </ToolBar>
+
+        <!-- DataGrid -->
+        <DataGrid x:Name="FilesGrid" AutoGenerateColumns="False" Margin="5"
+                  IsReadOnly="True" SelectionMode="Single" MouseDoubleClick="FilesGrid_DoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}"/>
+                <DataGridTextColumn Header="Modified" Binding="{Binding ModifiedAt}"/>
+                <DataGridTextColumn Header="Uploaded By" Binding="{Binding UploadedBy}"/>
+                <DataGridTextColumn Header="Edited By" Binding="{Binding EditedBy}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

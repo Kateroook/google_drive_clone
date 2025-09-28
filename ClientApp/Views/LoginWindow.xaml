@@ -1,0 +1,40 @@
+﻿<Window x:Class="ClientApp.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ClientApp.Views"
+        mc:Ignorable="d"
+        Title="Login" Height="200" Width="400" WindowStartupLocation="CenterScreen">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Username -->
+        <StackPanel Orientation="Horizontal" Margin="0 10 0 10">
+            <Label Content="Username:" Width="80"/>
+            <TextBox x:Name="UsernameBox" Width="250"/>
+        </StackPanel>
+
+        <!-- Password -->
+        <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0 10 0 10">
+            <Label Content="Password:" Width="80"/>
+            <PasswordBox x:Name="PasswordBox" Width="250"/>
+        </StackPanel>
+
+        <!-- Buttons -->
+        <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Center" Margin="0,40,0,26" Grid.RowSpan="2">
+            <Button Content="Login" Width="100" Margin="10" Click="Login_Click" Height="18"/>
+            <Button Content="Cancel" Width="100" Margin="10" Click="Cancel_Click" Height="19"/>
+        </StackPanel>
+        <Button Name="GoogleLoginButton" Width="200" Click="GoogleLoginButton_Click" Margin="80,26,80,1" Grid.Row="2">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Image Source="Images/google_logo.png" Width="24" Height="24" Margin="0,0,10,0"/>
+                <TextBlock Text="Login with Google" VerticalAlignment="Center" RenderTransformOrigin="0.207,0.654"/>
+            </StackPanel>
+        </Button>
+    </Grid>
+</Window>
