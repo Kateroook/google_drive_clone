@@ -20,54 +20,93 @@ namespace ClientApp.Views
     /// </summary>
     public partial class LoginWindow : Window
     {
-        private readonly ApiService _api;
-        public ApiService ApiService { get; private set; }
+        public ApiService ApiService { get; }
+        private readonly OAuthService _oAuthService = new OAuthService();
         public LoginWindow()
         {
             InitializeComponent();
-            _api = new ApiService("http://localhost:5000");
-            ApiService = new ApiService("http://localhost:5000");
-        }
-        private async void Login_Click(object sender, RoutedEventArgs e)
-        {
-            string username = UsernameBox.Text;
-            string password = PasswordBox.Password;
-
-            bool success = await _api.LoginAsync(username, password);
-            if (success)
-            {
-                MainWindow mainWindow = new MainWindow(_api);
-                mainWindow.Show();
-                this.Close();
-            }
-            else
-            {
-                MessageBox.Show("Invalid credentials!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            _oAuthService = new OAuthService();
+            CheckStoredToken();
         }
 
-        private void Cancel_Click(object sender, RoutedEventArgs e)
+        private async void CheckStoredToken()
         {
+            _oAuthService.LoadStoredToken();
+
+            if (_oAuthService.IsAuthenticated)
+            {
+                StatusText.Text = "Verifying stored credentials...";
+                
+                var userInfo = await _oAuthService.GetUserInfoAsync();
+                if (userInfo != null)
+                {
+                    OpenMainWindow(userInfo);
+                }
+                else
+                {
+                    StatusText.Text = "Sign in to access your files.";
+                }
+            }
+        }
+
+
+        private async void LoginButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoginButton.IsEnabled = false;
+            LoadingPanel.Visibility = Visibility.Visible;
+            StatusText.Text = "Opening browser for authentication...";
+
+            try
+            {
+                await _oAuthService.AuthenticateAsync();
+
+                // Чекаємо на завершення аутентифікації
+                await Task.Delay(3000);
+
+                if (_oAuthService.IsAuthenticated)
+                {
+                    StatusText.Text = "Getting user information...";
+                    var userInfo = await _oAuthService.GetUserInfoAsync();
+
+                    if (userInfo != null)
+                    {
+                        StatusText.Text = "Authentication successful!";
+                        await Task.Delay(500);
+
+                        OpenMainWindow(userInfo);
+                    }
+                    else
+                    {
+                        ShowError("Failed to get user information. Please try again.");
+                    }
+                }
+                else
+                {
+                    ShowError("Authentication failed. Please try again.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Error during authentication: {ex.Message}");
+            }
+            finally
+            {
+                LoginButton.IsEnabled = true;
+                LoadingPanel.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void OpenMainWindow(UserInfo userInfo)
+        {
+            var mainWindow = new MainWindow(_oAuthService, userInfo);
+            mainWindow.Show();
             this.Close();
         }
-        private async void GoogleLoginButton_Click(object sender, RoutedEventArgs e)
+
+        private void ShowError(string message)
         {
-            var oauth = new OAuthService();
-            string token = await oauth.LoginAsync();
-
-            if (!string.IsNullOrEmpty(token))
-            {
-                _api.SetToken(token); // Save token in ApiService
-                MessageBox.Show("Logged in with Google!");
-
-                MainWindow mainWindow = new MainWindow(_api);
-                mainWindow.Show();
-                this.Close();
-            }
-            else
-            {
-                MessageBox.Show("Login failed");
-            }
+            StatusText.Text = message;
+            MessageBox.Show(message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

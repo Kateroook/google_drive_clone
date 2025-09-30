@@ -26,19 +26,6 @@ namespace ClientApp.Services
             _client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
         }
-
-        public async Task<List<FileItem>> GetFilesAsync()
-        {
-            return await _client.GetFromJsonAsync<List<FileItem>>("/files");
-        }
-
-        public async Task UploadFileAsync(string filePath)
-        {
-            using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(File.OpenRead(filePath)), "file", Path.GetFileName(filePath));
-            await _client.PostAsync("/upload", content);
-        }
-
         public async Task<bool> LoginAsync(string username, string password)
         {
             var response = await _client.PostAsJsonAsync("/login", new { username, password });
@@ -53,6 +40,19 @@ namespace ClientApp.Services
             return false;
         }
 
+        //Files
+        public async Task<List<FileItem>> GetFilesAsync()
+        {
+            return await _client.GetFromJsonAsync<List<FileItem>>("/files");
+        }
+
+        public async Task UploadFileAsync(string filePath)
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(File.OpenRead(filePath)), "file", Path.GetFileName(filePath));
+            await _client.PostAsync("/upload", content);
+        }
+
         public async Task DownloadFileAsync(string fileId, string savePath)
         {
             var response = await _client.GetAsync($"/download/{fileId}");
@@ -64,5 +64,29 @@ namespace ClientApp.Services
         {
             await _client.DeleteAsync($"/files/{fileId}");
         }
+
+
+        //Folders
+        public async Task<List<FolderItem>> GetFoldersAsync(long? parentId = null)
+        {
+            string url = parentId.HasValue ? $"/folders?parentId={parentId}" : "/folders";
+            return await _client.GetFromJsonAsync<List<FolderItem>>(url);
+        }
+
+        public async Task CreateFolderAsync(string name, long? parentId = null)
+        {
+            await _client.PostAsJsonAsync("/folders", new { name, parentId });
+        }
+
+        public async Task RenameFolderAsync(long id, string newName)
+        {
+            await _client.PutAsJsonAsync($"/folders/{id}", new { name = newName });
+        }
+
+        public async Task DeleteFolderAsync(long id)
+        {
+            await _client.DeleteAsync($"/folders/{id}");
+        }
+
     }
 }

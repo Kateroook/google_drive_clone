@@ -5,36 +5,114 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ClientApp.Views"
         mc:Ignorable="d"
-        Title="Login" Height="200" Width="400" WindowStartupLocation="CenterScreen">
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        Title="Login" Height="500" Width="400" WindowStartupLocation="CenterScreen" Background="#F5F5F5">
+    <Grid>
+        <Border Background="White" 
+                CornerRadius="10" 
+                Margin="30"
+                Padding="40"
+                Effect="{DynamicResource DropShadow}">
 
-        <!-- Username -->
-        <StackPanel Orientation="Horizontal" Margin="0 10 0 10">
-            <Label Content="Username:" Width="80"/>
-            <TextBox x:Name="UsernameBox" Width="250"/>
-        </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+                <!-- Logo -->
+                <TextBlock Text="☁" 
+                           FontSize="72" 
+                           HorizontalAlignment="Center"
+                           Foreground="#1976D2"
+                           Margin="0,0,0,10"/>
 
-        <!-- Password -->
-        <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0 10 0 10">
-            <Label Content="Password:" Width="80"/>
-            <PasswordBox x:Name="PasswordBox" Width="250"/>
-        </StackPanel>
+                <TextBlock Text="My Cloud Drive" 
+                           FontSize="24" 
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           Foreground="#333333"
+                           Margin="0,0,0,30"/>
 
-        <!-- Buttons -->
-        <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Center" Margin="0,40,0,26" Grid.RowSpan="2">
-            <Button Content="Login" Width="100" Margin="10" Click="Login_Click" Height="18"/>
-            <Button Content="Cancel" Width="100" Margin="10" Click="Cancel_Click" Height="19"/>
-        </StackPanel>
-        <Button Name="GoogleLoginButton" Width="200" Click="GoogleLoginButton_Click" Margin="80,26,80,1" Grid.Row="2">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                <Image Source="Images/google_logo.png" Width="24" Height="24" Margin="0,0,10,0"/>
-                <TextBlock Text="Login with Google" VerticalAlignment="Center" RenderTransformOrigin="0.207,0.654"/>
+                <!-- Status Text -->
+                <TextBlock x:Name="StatusText" 
+                           Text="Sign in to access your files" 
+                           FontSize="14"
+                           HorizontalAlignment="Center"
+                           Foreground="#666666"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="0,0,0,30"/>
+
+                <!-- Login Button -->
+                <Button x:Name="LoginButton" 
+                        Content="Sign in with Google" 
+                        Click="LoginButton_Click"
+                        Height="50"
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Background="#4285F4"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" 
+                                                CornerRadius="5">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border Grid.Column="0" 
+                                                        Background="White" 
+                                                        Width="40" 
+                                                        Height="40"
+                                                        CornerRadius="3"
+                                                        Margin="5">
+                                                    <Image Source="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" 
+                                                           Width="25" 
+                                                           Height="25"/>
+                                                </Border>
+
+                                                <ContentPresenter Grid.Column="1" 
+                                                                HorizontalAlignment="Center" 
+                                                                VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#3367D6"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDBDBD"/>
+                                    <Setter Property="Cursor" Value="Wait"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Loading Indicator -->
+                <StackPanel x:Name="LoadingPanel" 
+                           Visibility="Collapsed" 
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Center"
+                           Margin="0,20,0,0">
+                    <TextBlock Text="⌛" FontSize="20" Margin="0,0,10,0"/>
+                    <TextBlock Text="Authenticating..." FontSize="14" Foreground="#666666"/>
+                </StackPanel>
+
+                <!-- Info Text -->
+                <TextBlock Text="Secure sign-in with your Google account" 
+                           FontSize="12"
+                           HorizontalAlignment="Center"
+                           Foreground="#999999"
+                           Margin="0,30,0,0"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"/>
             </StackPanel>
-        </Button>
+        </Border>
     </Grid>
 </Window>
