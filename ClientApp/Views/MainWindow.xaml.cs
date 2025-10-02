@@ -32,7 +32,9 @@ namespace ClientApp.Views
         private readonly SyncService _syncService;
         private ObservableCollection<FileItem> _allFiles;
         private ObservableCollection<FileItem> _filteredFiles;
+        private ObservableCollection<FolderItem> _folders;
         private FileItem _selectedFile;
+        private long? _currentFolderId = null;
 
         public MainWindow(OAuthService oAuthService, UserInfo userInfo)
         {
@@ -44,17 +46,43 @@ namespace ClientApp.Views
 
             _allFiles = new ObservableCollection<FileItem>();
             _filteredFiles = new ObservableCollection<FileItem>();
+            _folders = new ObservableCollection<FolderItem>();
 
             FilesDataGrid.ItemsSource = _filteredFiles;
+            FoldersListBox.ItemsSource = _folders;
 
             UserNameText.Text = userInfo.Name;
 
             _syncService.SyncStatusChanged += OnSyncStatusChanged;
 
-            _ = LoadFilesAsync();
+            _ = LoadDataAsync();
         }
 
         #region File Operations
+
+        private async Task LoadDataAsync()
+        {
+            await LoadFoldersAsync();
+            await LoadFilesAsync();
+        }
+
+        private async Task LoadFoldersAsync()
+        {
+            try
+            {
+                var folders = await _fileService.GetFoldersAsync(_currentFolderId);
+
+                _folders.Clear();
+                foreach (var folder in folders)
+                {
+                    _folders.Add(folder);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading folders: {ex.Message}");
+            }
+        }
 
         private async Task LoadFilesAsync()
         {
@@ -62,7 +90,7 @@ namespace ClientApp.Views
             {
                 StatusText.Text = "Loading files...";
 
-                var files = await _fileService.GetFilesAsync();
+                var files = await _fileService.GetFilesAsync(_currentFolderId);
 
                 _allFiles.Clear();
                 foreach (var file in files)
@@ -72,7 +100,7 @@ namespace ClientApp.Views
 
                 ApplyFilter();
 
-                FileCountText.Text = $"{_filteredFiles.Count} files";
+                FileCountText.Text = $"{_filteredFiles.Count} files, {_folders.Count} folders";
                 StatusText.Text = "Ready";
             }
             catch (Exception ex)
@@ -98,7 +126,7 @@ namespace ClientApp.Views
 
                 foreach (var filePath in dialog.FileNames)
                 {
-                    var result = await _fileService.UploadFileAsync(filePath);
+                    var result = await _fileService.UploadFileAsync(filePath, _currentFolderId);
                     if (result != null)
                     {
                         _allFiles.Add(result);
@@ -107,7 +135,7 @@ namespace ClientApp.Views
                 }
 
                 ApplyFilter();
-                FileCountText.Text = $"{_filteredFiles.Count} files";
+                FileCountText.Text = $"{_filteredFiles.Count} files, {_folders.Count} folders";
                 StatusText.Text = $"Uploaded {uploaded} file(s)";
             }
         }
@@ -175,14 +203,14 @@ namespace ClientApp.Views
                 }
 
                 ApplyFilter();
-                FileCountText.Text = $"{_filteredFiles.Count} files";
+                FileCountText.Text = $"{_filteredFiles.Count} files, {_folders.Count} folders";
                 StatusText.Text = $"Deleted {deleted} file(s)";
             }
         }
 
         private async void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
-            await LoadFilesAsync();
+            await LoadDataAsync();
         }
 
         private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
@@ -190,12 +218,40 @@ namespace ClientApp.Views
             var dialog = new TextInputDialog("Enter folder name:");
             if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.ResponseText))
             {
-                var folder = await _fileService.CreateFolderAsync(dialog.ResponseText);
+                var folder = await _fileService.CreateFolderAsync(dialog.ResponseText, _currentFolderId);
                 if (folder != null)
                 {
+                    _folders.Add(folder);
+                    FileCountText.Text = $"{_filteredFiles.Count} files, {_folders.Count} folders";
                     StatusText.Text = $"Folder '{folder.Name}' created";
+                    MessageBox.Show($"Folder '{folder.Name}' created successfully!",
+                        "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show("Failed to create folder. Please try again.",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
+        }
+
+        private async void FoldersListBox_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (FoldersListBox.SelectedItem is FolderItem folder)
+            {
+                _currentFolderId = folder.Id;
+                StatusText.Text = $"Opening folder: {folder.Name}";
+                BackButton.IsEnabled = true;
+                await LoadDataAsync();
+            }
+        }
+
+        private async void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            _currentFolderId = null;
+            BackButton.IsEnabled = false;
+            StatusText.Text = "Root folder";
+            await LoadDataAsync();
         }
 
         #endregion
@@ -387,14 +443,18 @@ namespace ClientApp.Views
 
         #region Sync
 
-        private void SelectSyncFolder_Click(object sender, RoutedEventArgs e)
+        private async void SelectSyncFolder_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new FolderPickerDialog();
             if (dialog.ShowDialog() == true)
             {
-                _syncService.ConfigureSync(dialog.SelectedPath, null, AutoSyncCheckBox.IsChecked == true);
+                StatusText.Text = "Configuring sync...";
+                await _syncService.ConfigureSyncAsync(dialog.SelectedPath, _currentFolderId, AutoSyncCheckBox.IsChecked == true);
                 SyncFolderText.Text = dialog.SelectedPath;
                 StatusText.Text = "Sync folder configured";
+                
+                // Refresh folders to show the newly created one
+                await LoadFoldersAsync();
             }
         }
 
@@ -439,12 +499,12 @@ namespace ClientApp.Views
                 "Sync Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        private void AutoSync_Changed(object sender, RoutedEventArgs e)
+        private async void AutoSync_Changed(object sender, RoutedEventArgs e)
         {
             var config = _syncService.GetConfig();
             if (config != null)
             {
-                _syncService.ConfigureSync(config.LocalPath, config.RemoteFolderId,
+                await _syncService.ConfigureSyncAsync(config.LocalPath, config.RemoteFolderId,
                     AutoSyncCheckBox.IsChecked == true);
             }
         }

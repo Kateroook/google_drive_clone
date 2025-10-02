@@ -3,12 +3,12 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using System.Net.Http.Headers;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
-using System.IO;
 
 namespace ClientApp.Services
 {
@@ -155,6 +155,43 @@ namespace ClientApp.Services
         }
 
         /// <summary>
+        /// Оновлення існуючого файлу (зберігає created_at, оновлює updated_at)
+        /// </summary>
+        public async Task<FileItem> UpdateFileAsync(long fileId, string newFilePath)
+        {
+            try
+            {
+                SetAuthHeader();
+
+                using (var content = new MultipartFormDataContent())
+                {
+                    var fileContent = new ByteArrayContent(File.ReadAllBytes(newFilePath));
+                    fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
+                    content.Add(fileContent, "file", Path.GetFileName(newFilePath));
+
+                    var response = await _httpClient.PutAsync($"{_serverUrl}/api/files/{fileId}", content);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseContent = await response.Content.ReadAsStringAsync();
+                        var result = JsonConvert.DeserializeObject<ApiResponse<FileItem>>(responseContent);
+                        Debug.WriteLine($"File updated successfully: {Path.GetFileName(newFilePath)}");
+                        return result.Data;
+                    }
+
+                    Debug.WriteLine($"Update failed: {response.StatusCode}");
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Debug.WriteLine($"Error response: {errorContent}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating file: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Отримання вмісту файлу для попереднього перегляду
         /// </summary>
         public async Task<string> GetFileContentAsync(long fileId)
@@ -240,17 +277,30 @@ namespace ClientApp.Services
             try
             {
                 SetAuthHeader();
+
+                // Логування для діагностики
+                Debug.WriteLine($"Creating folder: name='{name}', parentId={parentId}");
+
                 var data = new { name, parent_id = parentId };
                 var json = JsonConvert.SerializeObject(data);
+                Debug.WriteLine($"Request JSON: {json}");
+
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.PostAsync($"{_serverUrl}/api/folders", content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                Debug.WriteLine($"Response status: {response.StatusCode}");
+                Debug.WriteLine($"Response content: {responseContent}");
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseContent = await response.Content.ReadAsStringAsync();
                     var result = JsonConvert.DeserializeObject<ApiResponse<FolderItem>>(responseContent);
                     return result.Data;
+                }
+                else
+                {
+                    Debug.WriteLine($"Failed to create folder: {response.StatusCode}");
                 }
 
                 return null;

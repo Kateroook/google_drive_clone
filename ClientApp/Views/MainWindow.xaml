@@ -110,6 +110,8 @@
 
                 <!-- File Actions -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Button x:Name="BackButton" Content="⬅ Back" Click="BackButton_Click" 
+                            Style="{StaticResource ModernButton}" IsEnabled="False"/>
                     <Button Content="📤 Upload" Click="UploadButton_Click" 
                             Style="{StaticResource ModernButton}"/>
                     <Button Content="📥 Download" Click="DownloadButton_Click" 
@@ -183,7 +185,44 @@
                     </Border>
 
                     <!-- DataGrid -->
-                    <DataGrid x:Name="FilesDataGrid" Grid.Row="1" 
+                    <Grid Grid.Row="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Folders List -->
+                        <ListBox x:Name="FoldersListBox" Grid.Row="0" 
+                                 MaxHeight="150"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 Background="White"
+                                 BorderThickness="0,0,0,1"
+                                 BorderBrush="#E0E0E0"
+                                 MouseDoubleClick="FoldersListBox_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="5">
+                                        <TextBlock Text="📁" FontSize="20" Margin="0,0,10,0"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding CreatedAt, StringFormat=' (Created: {0:yyyy-MM-dd})'}" 
+                                                   VerticalAlignment="Center" Foreground="#666" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#E3F2FD"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <!-- Files DataGrid -->
+                        <DataGrid x:Name="FilesDataGrid" Grid.Row="1" 
                               AutoGenerateColumns="False" 
                               IsReadOnly="True"
                               SelectionMode="Extended"
@@ -195,60 +234,61 @@
                               SelectionChanged="FilesDataGrid_SelectionChanged"
                               MouseDoubleClick="FilesDataGrid_MouseDoubleClick">
 
-                        <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="📄 Name" Width="2*" CanUserResize="True">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding FileType}" 
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="📄 Name" Width="2*" CanUserResize="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding FileType}" 
                                                        FontWeight="Bold" 
                                                        Margin="0,0,5,0"
                                                        Foreground="#1976D2"/>
-                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                            <DataGridTextColumn Header="Size" 
+                                <DataGridTextColumn Header="Size" 
                                                 Binding="{Binding SizeFormatted}" 
                                                 Width="100"
                                                 x:Name="SizeColumn"/>
 
-                            <DataGridTextColumn Header="Created" 
+                                <DataGridTextColumn Header="Created" 
                                                 Binding="{Binding CreatedAt, StringFormat='yyyy-MM-dd HH:mm'}" 
                                                 Width="150"
                                                 x:Name="CreatedColumn"/>
 
-                            <DataGridTextColumn Header="Updated" 
+                                <DataGridTextColumn Header="Updated" 
                                                 Binding="{Binding UpdatedAt, StringFormat='yyyy-MM-dd HH:mm'}" 
                                                 Width="150"
                                                 x:Name="UpdatedColumn"/>
 
-                            <DataGridTextColumn Header="Uploaded By" 
+                                <DataGridTextColumn Header="Uploaded By" 
                                                 Binding="{Binding UploadedByName}" 
                                                 Width="150"
                                                 x:Name="UploaderColumn"/>
 
-                            <DataGridTextColumn Header="Edited By" 
+                                <DataGridTextColumn Header="Edited By" 
                                                 Binding="{Binding EditedByName}" 
                                                 Width="150"
                                                 x:Name="EditorColumn"/>
-                        </DataGrid.Columns>
+                            </DataGrid.Columns>
 
-                        <DataGrid.RowStyle>
-                            <Style TargetType="DataGridRow">
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#E3F2FD"/>
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="#BBDEFB"/>
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </DataGrid.RowStyle>
-                    </DataGrid>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#E3F2FD"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#BBDEFB"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                        </DataGrid>
+                    </Grid>
                 </Grid>
             </Border>
 
