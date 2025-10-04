@@ -113,6 +113,23 @@
                             Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
                     <Button Content="➕ New Folder" Click="NewFolderButton_Click" 
                             Style="{StaticResource IconButton}"/>
+                    <Button Content="⚙️" Click="ColumnsButton_Click" 
+                            Style="{StaticResource IconButton}" ToolTip="Column Settings">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ColumnsMenu">
+                                <MenuItem Header="Size" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Size"/>
+                                <MenuItem Header="Owner" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Owner"/>
+                                <MenuItem Header="Created" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Created"/>
+                                <MenuItem Header="Last Modified" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Modified"/>
+                                <MenuItem Header="Last Edited By" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Editor"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button Content="🔄" Click="RefreshButton_Click" 
                             Style="{StaticResource IconButton}" ToolTip="Refresh"/>
                 </StackPanel>
@@ -164,20 +181,22 @@
 
                     <!-- Headers -->
                     <Border Grid.Row="0" Background="#F8F9FA" Padding="16,12" BorderBrush="#E8EAED" BorderThickness="0,0,0,1">
-                        <Grid>
+                        <Grid x:Name="HeaderGrid">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="120"/>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition x:Name="SizeColumn" Width="100"/>
+                                <ColumnDefinition x:Name="OwnerColumn" Width="120"/>
+                                <ColumnDefinition x:Name="CreatedColumn" Width="140"/>
+                                <ColumnDefinition x:Name="ModifiedColumn" Width="140"/>
+                                <ColumnDefinition x:Name="EditorColumn" Width="140"/>
                             </Grid.ColumnDefinitions>
 
                             <TextBlock Text="Name" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
-                            <TextBlock Grid.Column="1" Text="Size" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
-                            <TextBlock Grid.Column="2" Text="Owner" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
-                            <TextBlock Grid.Column="3" Text="Last modified" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
-                            <TextBlock Grid.Column="4" Text="Last edited by" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="SizeHeader" Grid.Column="1" Text="Size" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="OwnerHeader" Grid.Column="2" Text="Owner" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="CreatedHeader" Grid.Column="3" Text="Created" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="ModifiedHeader" Grid.Column="4" Text="Last modified" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="EditorHeader" Grid.Column="5" Text="Last edited by" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
                         </Grid>
                     </Border>
 
@@ -198,9 +217,37 @@
                                 CornerRadius="4" Padding="16" Margin="0,0,0,16" Visibility="Collapsed">
                             <StackPanel>
                                 <Image x:Name="ImagePreview" MaxHeight="200" Stretch="Uniform" Visibility="Collapsed"/>
-                                <TextBox x:Name="CodePreview" IsReadOnly="True" TextWrapping="Wrap"
-                                         Background="Transparent" BorderThickness="0"
-                                         FontFamily="Consolas" FontSize="11" MaxHeight="300" Visibility="Collapsed"/>
+                                <!-- Code Editor -->
+                                <Grid x:Name="CodePreview" Visibility="Collapsed" Background="#1E1E1E" MaxHeight="400">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Line Numbers -->
+                                    <Border Grid.Column="0" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,1,0" Padding="8,8,12,8">
+                                        <TextBlock x:Name="LineNumbers" 
+                                                   FontFamily="Consolas" 
+                                                   FontSize="12" 
+                                                   Foreground="#858585"
+                                                   TextAlignment="Right"
+                                                   LineHeight="18"/>
+                                    </Border>
+
+                                    <!-- Code Content -->
+                                    <ScrollViewer Grid.Column="1" 
+                                                  VerticalScrollBarVisibility="Auto" 
+                                                  HorizontalScrollBarVisibility="Auto"
+                                                  Padding="12,8">
+                                        <TextBlock x:Name="CodeContent" 
+                                                   FontFamily="Consolas" 
+                                                   FontSize="12" 
+                                                   Foreground="#D4D4D4"
+                                                   TextWrapping="NoWrap"
+                                                   LineHeight="18"
+                                                   Background="Transparent"/>
+                                    </ScrollViewer>
+                                </Grid>
                             </StackPanel>
                         </Border>
 

@@ -33,7 +33,6 @@ namespace ClientApp.Services
         /// <summary>
         /// Отримання списку всіх файлів користувача
         /// </summary>
-        /// 
         public async Task<List<FileItem>> GetFilesAsync(long? folderId = null)
         {
             try
@@ -49,16 +48,16 @@ namespace ClientApp.Services
                 {
                     var content = await response.Content.ReadAsStringAsync();
                     var result = JsonConvert.DeserializeObject<ApiResponse<List<FileItem>>>(content);
-                    return result.Data ?? new List<FileItem>(); // Порожній список = папка порожня
+                    return result.Data ?? new List<FileItem>();
                 }
 
                 Debug.WriteLine($"Failed to get files: {response.StatusCode}");
-                return null; // null = помилка запиту
+                return new List<FileItem>();
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error getting files: {ex.Message}");
-                return null; // null = помилка
+                return new List<FileItem>();
             }
         }
 
@@ -70,7 +69,7 @@ namespace ClientApp.Services
             try
             {
                 SetAuthHeader();
-                var response = await _httpClient.GetAsync($"{_serverUrl}/api/files/all");
+                var response = await _httpClient.GetAsync($"{_serverUrl}/api/files");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -210,40 +209,40 @@ namespace ClientApp.Services
         /// <summary>
         /// Оновлення існуючого файлу (перезавантаження)
         /// </summary>
-        public async Task<FileItem> UpdateFileAsync(long fileId, string newFilePath)
+    public async Task<FileItem> UpdateFileAsync(long fileId, string newFilePath)
+{
+    try
+    {
+        SetAuthHeader();
+
+        using (var content = new MultipartFormDataContent())
         {
-            try
+            var fileContent = new ByteArrayContent(File.ReadAllBytes(newFilePath));
+            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
+            
+            content.Add(fileContent, "file", Path.GetFileName(newFilePath));
+
+            var response = await _httpClient.PutAsync($"{_serverUrl}/api/files/{fileId}", content);
+
+            if (response.IsSuccessStatusCode)
             {
-                SetAuthHeader();
-
-                using (var content = new MultipartFormDataContent())
-                {
-                    var fileContent = new ByteArrayContent(File.ReadAllBytes(newFilePath));
-                    fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
-
-                    content.Add(fileContent, "file", Path.GetFileName(newFilePath));
-
-                    var response = await _httpClient.PutAsync($"{_serverUrl}/api/files/{fileId}", content);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = await response.Content.ReadAsStringAsync();
-                        var result = JsonConvert.DeserializeObject<ApiResponse<FileItem>>(responseContent);
-                        return result.Data;
-                    }
-
-                    Debug.WriteLine($"Update failed: {response.StatusCode}");
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    Debug.WriteLine($"Error content: {errorContent}");
-                    return null;
-                }
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<ApiResponse<FileItem>>(responseContent);
+                return result.Data;
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error updating file: {ex.Message}");
-                return null;
-            }
+
+            Debug.WriteLine($"Update failed: {response.StatusCode}");
+            var errorContent = await response.Content.ReadAsStringAsync();
+            Debug.WriteLine($"Error content: {errorContent}");
+            return null;
         }
+    }
+    catch (Exception ex)
+    {
+        Debug.WriteLine($"Error updating file: {ex.Message}");
+        return null;
+    }
+}
 
         /// <summary>
         /// Отримання вмісту файлу для попереднього перегляду
@@ -257,9 +256,14 @@ namespace ClientApp.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    return await response.Content.ReadAsStringAsync();
+                    var jsonContent = await response.Content.ReadAsStringAsync();
+
+                    var result = JsonConvert.DeserializeObject<ApiResponse<string>>(jsonContent);
+
+                    return result?.Data;
                 }
 
+                Debug.WriteLine($"Failed to get file content: {response.StatusCode}");
                 return null;
             }
             catch (Exception ex)
@@ -268,7 +272,6 @@ namespace ClientApp.Services
                 return null;
             }
         }
-
         /// <summary>
         /// Отримання зображення для попереднього перегляду
         /// </summary>

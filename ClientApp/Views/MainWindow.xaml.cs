@@ -3,6 +3,7 @@ using ClientApp.Services;
 using ClientApp.Views;
 using Microsoft.Win32;
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -31,8 +32,11 @@ namespace ClientApp
         private long? _currentFolderId = null;
         private Stack<FolderItem> _navigationStack;
         private FolderItem _currentFolder;
-        private object _selectedItem; // Може бути FileItem або FolderItem
-        private bool _showAllFiles = false; // Режим "All Files"
+        private object _selectedItem;
+        private bool _showAllFiles = false;
+
+        // Видимість колонок
+        private Dictionary<string, bool> _columnVisibility;
 
         public MainWindow(OAuthService oAuthService, UserInfo userInfo)
         {
@@ -48,17 +52,104 @@ namespace ClientApp
             _filteredFolders = new List<FolderItem>();
             _navigationStack = new Stack<FolderItem>();
 
+            // Ініціалізація видимості колонок (всі видимі за замовчуванням)
+            _columnVisibility = new Dictionary<string, bool>
+            {
+                { "Size", true },
+                { "Owner", true },
+                { "Created", true },
+                { "Modified", true },
+                { "Editor", true }
+            };
+
             UserNameText.Text = userInfo.Name;
             _syncService.SyncStatusChanged += OnSyncStatusChanged;
 
-            // ЗАМІСТЬ LoadDataAsync() тут, використовуйте Loaded event
             this.Loaded += MainWindow_Loaded;
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            LoadColumnSettings();
+            ApplyColumnVisibility();
             await LoadDataAsync();
         }
+
+        #region Column Management
+
+        private void ColumnsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.ContextMenu != null)
+            {
+                button.ContextMenu.PlacementTarget = button;
+                button.ContextMenu.IsOpen = true;
+            }
+        }
+
+        private void ColumnVisibility_Changed(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem && menuItem.Tag is string columnName)
+            {
+                _columnVisibility[columnName] = menuItem.IsChecked;
+                SaveColumnSettings();
+                ApplyColumnVisibility();
+                UpdateUI();
+            }
+        }
+
+        private void ApplyColumnVisibility()
+        {
+            // Headers
+            SetColumnVisibility("Size", SizeColumn, SizeHeader);
+            SetColumnVisibility("Owner", OwnerColumn, OwnerHeader);
+            SetColumnVisibility("Created", CreatedColumn, CreatedHeader);
+            SetColumnVisibility("Modified", ModifiedColumn, ModifiedHeader);
+            SetColumnVisibility("Editor", EditorColumn, EditorHeader);
+        }
+
+        private void SetColumnVisibility(string columnName, ColumnDefinition column, TextBlock header)
+        {
+            var isVisible = _columnVisibility[columnName];
+            column.Width = isVisible ? new GridLength(columnName == "Size" ? 100 : columnName == "Owner" ? 120 : 140) : new GridLength(0);
+            header.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void LoadColumnSettings()
+        {
+            try
+            {
+                _columnVisibility["Size"] = Settings.Default.ShowSizeColumn;
+                _columnVisibility["Owner"] = Settings.Default.ShowOwnerColumn;
+                _columnVisibility["Created"] = Settings.Default.ShowCreatedColumn;
+                _columnVisibility["Modified"] = Settings.Default.ShowModifiedColumn;
+                _columnVisibility["Editor"] = Settings.Default.ShowEditorColumn;
+
+                // Оновлюємо чекбокси в меню
+                foreach (MenuItem item in ColumnsMenu.Items)
+                {
+                    if (item.Tag is string columnName && _columnVisibility.ContainsKey(columnName))
+                    {
+                        item.IsChecked = _columnVisibility[columnName];
+                    }
+                }
+            }
+            catch
+            {
+                // Якщо налаштування не існують, використовуємо defaults
+            }
+        }
+
+        private void SaveColumnSettings()
+        {
+            Settings.Default.ShowSizeColumn = _columnVisibility["Size"];
+            Settings.Default.ShowOwnerColumn = _columnVisibility["Owner"];
+            Settings.Default.ShowCreatedColumn = _columnVisibility["Created"];
+            Settings.Default.ShowModifiedColumn = _columnVisibility["Modified"];
+            Settings.Default.ShowEditorColumn = _columnVisibility["Editor"];
+            Settings.Default.Save();
+        }
+
+        #endregion
 
         #region Data Loading
 
@@ -76,7 +167,7 @@ namespace ClientApp
             try
             {
                 var folders = _showAllFiles
-                    ? new List<FolderItem>() // В режимі "All Files" папки не показуємо
+                    ? new List<FolderItem>()
                     : await _fileService.GetFoldersAsync(_currentFolderId);
 
                 _allFolders.Clear();
@@ -98,7 +189,7 @@ namespace ClientApp
                 StatusText.Text = "Loading...";
 
                 var files = _showAllFiles
-                    ? await _fileService.GetAllFilesAsync() // Всі файли користувача
+                    ? await _fileService.GetAllFilesAsync()
                     : await _fileService.GetFilesAsync(_currentFolderId);
 
                 _allFiles.Clear();
@@ -118,7 +209,6 @@ namespace ClientApp
 
         private void ApplyFilter()
         {
-            // Перевірка чи все ініціалізовано
             if (FilterComboBox == null || _allFiles == null)
                 return;
 
@@ -149,7 +239,6 @@ namespace ClientApp
         {
             ApplyFilter();
 
-            // КРИТИЧНА ПЕРЕВІРКА
             if (ItemsPanel == null)
             {
                 Debug.WriteLine("UpdateUI: ItemsPanel is null, skipping");
@@ -202,16 +291,26 @@ namespace ClientApp
                     OpenFolder(folder);
                     e.Handled = true;
                 }
-            }; border.MouseRightButtonDown += (s, e) => ShowFolderContextMenu(folder, border, e);
+            };
+            border.MouseRightButtonDown += (s, e) => ShowFolderContextMenu(folder, border, e);
 
             var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
 
-            // Name
+            // Динамічні колонки на основі видимості
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            if (_columnVisibility["Size"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+            if (_columnVisibility["Owner"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            if (_columnVisibility["Created"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            if (_columnVisibility["Modified"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            if (_columnVisibility["Editor"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+
+            // Name (завжди видимий)
             var nameStack = new StackPanel { Orientation = Orientation.Horizontal };
             nameStack.Children.Add(new TextBlock { Text = "📁", FontSize = 20, Margin = new Thickness(0, 0, 12, 0) });
             nameStack.Children.Add(new TextBlock { Text = folder.Name, FontWeight = FontWeights.Medium, VerticalAlignment = VerticalAlignment.Center });
@@ -230,24 +329,47 @@ namespace ClientApp
             Grid.SetColumn(nameStack, 0);
             grid.Children.Add(nameStack);
 
+            int colIndex = 1;
+
             // Size
-            Grid.SetColumn(AddText("—"), 1);
-            grid.Children.Add(AddText("—"));
+            if (_columnVisibility["Size"])
+            {
+                var sizeText = AddText("—");
+                Grid.SetColumn(sizeText, colIndex++);
+                grid.Children.Add(sizeText);
+            }
 
             // Owner
-            var ownerText = AddText("me");
-            Grid.SetColumn(ownerText, 2);
-            grid.Children.Add(ownerText);
+            if (_columnVisibility["Owner"])
+            {
+                var ownerText = AddText("me");
+                Grid.SetColumn(ownerText, colIndex++);
+                grid.Children.Add(ownerText);
+            }
+
+            // Created
+            if (_columnVisibility["Created"])
+            {
+                var createdText = AddText(folder.CreatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
+                Grid.SetColumn(createdText, colIndex++);
+                grid.Children.Add(createdText);
+            }
 
             // Modified
-            var modText = AddText(folder.UpdatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
-            Grid.SetColumn(modText, 3);
-            grid.Children.Add(modText);
+            if (_columnVisibility["Modified"])
+            {
+                var modText = AddText(folder.UpdatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
+                Grid.SetColumn(modText, colIndex++);
+                grid.Children.Add(modText);
+            }
 
-            // Editor (empty for folders)
-            var editorText = AddText("—");
-            Grid.SetColumn(editorText, 4);
-            grid.Children.Add(editorText);
+            // Editor
+            if (_columnVisibility["Editor"])
+            {
+                var editorText = AddText("—");
+                Grid.SetColumn(editorText, colIndex++);
+                grid.Children.Add(editorText);
+            }
 
             border.Child = grid;
             return border;
@@ -273,13 +395,22 @@ namespace ClientApp
             border.MouseRightButtonDown += (s, e) => ShowFileContextMenu(file, border, e);
 
             var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
 
-            // Name
+            // Динамічні колонки
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            if (_columnVisibility["Size"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+            if (_columnVisibility["Owner"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            if (_columnVisibility["Created"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            if (_columnVisibility["Modified"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            if (_columnVisibility["Editor"])
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+
+            // Name (завжди видимий)
             var nameStack = new StackPanel { Orientation = Orientation.Horizontal };
             string icon = file.IsImage ? "🖼️" : file.IsCode ? "📄" : "📎";
             nameStack.Children.Add(new TextBlock { Text = icon, FontSize = 20, Margin = new Thickness(0, 0, 12, 0) });
@@ -287,25 +418,47 @@ namespace ClientApp
             Grid.SetColumn(nameStack, 0);
             grid.Children.Add(nameStack);
 
+            int colIndex = 1;
+
             // Size
-            var sizeText = AddText(file.SizeFormatted);
-            Grid.SetColumn(sizeText, 1);
-            grid.Children.Add(sizeText);
+            if (_columnVisibility["Size"])
+            {
+                var sizeText = AddText(file.SizeFormatted);
+                Grid.SetColumn(sizeText, colIndex++);
+                grid.Children.Add(sizeText);
+            }
 
             // Owner
-            var ownerText = AddText(file.UploadedByName ?? "me");
-            Grid.SetColumn(ownerText, 2);
-            grid.Children.Add(ownerText);
+            if (_columnVisibility["Owner"])
+            {
+                var ownerText = AddText(file.UploadedByName ?? "me");
+                Grid.SetColumn(ownerText, colIndex++);
+                grid.Children.Add(ownerText);
+            }
+
+            // Created
+            if (_columnVisibility["Created"])
+            {
+                var createdText = AddText(file.CreatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
+                Grid.SetColumn(createdText, colIndex++);
+                grid.Children.Add(createdText);
+            }
 
             // Modified
-            var modText = AddText(file.UpdatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
-            Grid.SetColumn(modText, 3);
-            grid.Children.Add(modText);
+            if (_columnVisibility["Modified"])
+            {
+                var modText = AddText(file.UpdatedAt.ToString("MMM dd, yyyy HH:mm:ss"));
+                Grid.SetColumn(modText, colIndex++);
+                grid.Children.Add(modText);
+            }
 
             // Edited by
-            var editorText = AddText(file.EditedByName ?? "—");
-            Grid.SetColumn(editorText, 4);
-            grid.Children.Add(editorText);
+            if (_columnVisibility["Editor"])
+            {
+                var editorText = AddText(file.EditedByName ?? "—");
+                Grid.SetColumn(editorText, colIndex++);
+                grid.Children.Add(editorText);
+            }
 
             border.Child = grid;
             return border;
@@ -328,13 +481,11 @@ namespace ClientApp
 
         private void SelectItem(object item, Border border)
         {
-            // Зняти виділення з попереднього
             foreach (var child in ItemsPanel.Children)
             {
                 if (child is Border b) b.Background = Brushes.Transparent;
             }
 
-            // Виділити поточний
             border.Background = new SolidColorBrush(Color.FromRgb(200, 230, 255));
             _selectedItem = item;
 
@@ -520,13 +671,11 @@ namespace ClientApp
 
                 StatusText.Text = $"Creating folder '{folderName}'...";
 
-                // Створити віртуальну папку
                 var folder = await _fileService.CreateFolderAsync(folderName, _currentFolderId, localPath);
                 if (folder != null)
                 {
                     StatusText.Text = "Uploading folder contents...";
 
-                    // Завантажити всі файли
                     var files = Directory.GetFiles(localPath);
                     int uploaded = 0;
                     foreach (var file in files)
@@ -535,10 +684,7 @@ namespace ClientApp
                         if (result != null) uploaded++;
                     }
 
-                    // КРИТИЧНО: чекаємо 2 секунди перед активацією синхронізації
                     await Task.Delay(2000);
-
-                    // Тепер активуємо синхронізацію
                     await _syncService.ConfigureSyncAsync(localPath, folder.Id, true);
 
                     await LoadDataAsync();
@@ -688,7 +834,7 @@ namespace ClientApp
                     var content = await _fileService.GetFileContentAsync(file.Id);
                     if (content != null)
                     {
-                        CodePreview.Text = content;
+                        DisplayCodeWithLineNumbers(content, file.Extension);
                         CodePreview.Visibility = Visibility.Visible;
                     }
                 }
@@ -696,6 +842,126 @@ namespace ClientApp
             catch (Exception ex)
             {
                 Debug.WriteLine($"Preview error: {ex.Message}");
+            }
+        }
+
+        private void DisplayCodeWithLineNumbers(string code, string extension)
+        {
+            // Нормалізуємо line endings
+            code = code.Replace("\r\n", "\n").Replace("\r", "\n");
+
+            var lines = code.Split('\n');
+            var lineCount = lines.Length;
+
+            // Генеруємо номери рядків
+            var lineNumbers = string.Join("\n", Enumerable.Range(1, lineCount));
+            LineNumbers.Text = lineNumbers;
+
+            // Застосовуємо базову підсвітку синтаксису
+            CodeContent.Inlines.Clear();
+
+            foreach (var line in lines)
+            {
+                ApplySyntaxHighlighting(line, extension);
+                CodeContent.Inlines.Add(new System.Windows.Documents.LineBreak());
+            }
+        }
+
+        private void ApplySyntaxHighlighting(string line, string extension)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
+
+            // Базова підсвітка для популярних мов
+            var keywords = GetKeywordsForExtension(extension);
+            var words = System.Text.RegularExpressions.Regex.Split(line, @"(\s+|[{}()\[\];,\.])");
+
+            foreach (var word in words)
+            {
+                if (string.IsNullOrWhiteSpace(word))
+                {
+                    CodeContent.Inlines.Add(new System.Windows.Documents.Run(word));
+                    continue;
+                }
+
+                System.Windows.Documents.Run run;
+
+                // Коментарі
+                if (word.TrimStart().StartsWith("//") || word.TrimStart().StartsWith("#"))
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(106, 153, 85)) // Green
+                    };
+                }
+                // Ключові слова
+                else if (keywords.Contains(word))
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(86, 156, 214)) // Blue
+                    };
+                }
+                // Строки
+                else if (word.StartsWith("\"") || word.StartsWith("'"))
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(206, 145, 120)) // Orange
+                    };
+                }
+                // Числа
+                else if (double.TryParse(word, out _))
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(181, 206, 168)) // Light green
+                    };
+                }
+                // Функції (слово перед дужкою)
+                else if (word.Contains("("))
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 170)) // Yellow
+                    };
+                }
+                else
+                {
+                    run = new System.Windows.Documents.Run(word)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(212, 212, 212)) // Light gray
+                    };
+                }
+
+                CodeContent.Inlines.Add(run);
+            }
+        }
+
+        private HashSet<string> GetKeywordsForExtension(string extension)
+        {
+            switch (extension?.ToLower())
+            {
+                case ".cs":
+                    return new HashSet<string>
+                    {
+                        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+                        "checked", "class", "const", "continue", "decimal", "default", "delegate",
+                        "do", "double", "else", "enum", "event", "explicit", "extern", "false",
+                        "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit",
+                        "in", "int", "interface", "internal", "is", "lock", "long", "namespace",
+                        "new", "null", "object", "operator", "out", "override", "params", "private",
+                        "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
+                        "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
+                        "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+                        "unsafe", "ushort", "using", "var", "virtual", "void", "volatile", "while",
+                        "async", "await"
+                    };
+
+                default:
+                    return new HashSet<string>();
             }
         }
 
@@ -737,10 +1003,8 @@ namespace ClientApp
 
             if (AutoSyncCheckBox.IsChecked == true)
             {
-                // Увімкнути синхронізацію
                 if (string.IsNullOrEmpty(_currentFolder.SyncPath))
                 {
-                    // Вибрати локальну папку
                     var dialog = new FolderPickerDialog();
                     if (dialog.ShowDialog() == true)
                     {
@@ -763,13 +1027,11 @@ namespace ClientApp
                 }
                 else
                 {
-                    // Папка вже налаштована, просто активувати
                     await _syncService.ConfigureSyncAsync(_currentFolder.SyncPath, _currentFolder.Id, true);
                 }
             }
             else
             {
-                // Вимкнути синхронізацію і видалити шлях
                 if (_currentFolder != null && !string.IsNullOrEmpty(_currentFolder.SyncPath))
                 {
                     var result = MessageBox.Show(

@@ -71,13 +71,15 @@ namespace ClientApp.Models
             }
         }
 
-        public bool IsImage => Extension == ".jpg" || Extension == ".jpeg" ||
-                               Extension == ".png" || Extension == ".gif" ||
-                               Extension == ".bmp";
+        public bool IsImage => Extension == ".jpg";
+        // || Extension == ".jpeg" ||
+        //Extension == ".png" || Extension == ".gif" ||
+        //Extension == ".bmp";
 
-        public bool IsCode => Extension == ".cs" || Extension == ".py" ||
-                             Extension == ".js" || Extension == ".cpp" ||
-                             Extension == ".java";
+        public bool IsCode => Extension == ".cs";
+            //|| Extension == ".py" ||
+            //                 Extension == ".js" || Extension == ".cpp" ||
+            //                 Extension == ".java";
 
         public bool IsPreviewable => IsImage || IsCode;
 
