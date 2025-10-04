@@ -116,11 +116,16 @@ namespace ClientApp.Models
         [JsonProperty("user_id")]
         public long UserId { get; set; }
 
+        [JsonProperty("sync_path")]
+        public string SyncPath { get; set; }
+
         [JsonProperty("created_at")]
         public DateTime CreatedAt { get; set; }
 
         [JsonProperty("updated_at")]
         public DateTime UpdatedAt { get; set; }
+
+        public bool IsSynced => !string.IsNullOrEmpty(SyncPath);
 
         public event PropertyChangedEventHandler PropertyChanged;
 

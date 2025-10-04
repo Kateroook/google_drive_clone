@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 
@@ -14,10 +15,12 @@ namespace ClientApp.Services
         private readonly FileService _fileService;
         private FileSystemWatcher _watcher;
         private SyncConfig _config;
+        private Timer _serverPollingTimer;
         private readonly ConcurrentDictionary<string, DateTime> _lastEventAt =
             new ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, DateTime> _lastUploadedAt =
             new ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        private bool _isPolling = false;
 
         public event EventHandler<string> SyncStatusChanged;
 
@@ -27,7 +30,7 @@ namespace ClientApp.Services
         }
 
         /// <summary>
-        /// Налаштування синхронізації папки
+        /// Налаштування синхронізації папки з збереженням на сервері
         /// </summary>
         public async Task ConfigureSyncAsync(string localPath, long? remoteFolderId = null, bool autoSync = true)
         {
@@ -35,7 +38,7 @@ namespace ClientApp.Services
             if (!remoteFolderId.HasValue)
             {
                 var localFolderName = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar));
-                var createdFolder = await _fileService.CreateFolderAsync(localFolderName, null);
+                var createdFolder = await _fileService.CreateFolderAsync(localFolderName, null, localPath);
                 if (createdFolder != null)
                 {
                     remoteFolderId = createdFolder.Id;
@@ -46,6 +49,11 @@ namespace ClientApp.Services
                     Debug.WriteLine($"[SYNC] Failed to create remote folder: {localFolderName}");
                 }
             }
+            else
+            {
+                // Оновлюємо sync_path для існуючої папки
+                await _fileService.UpdateFolderSyncAsync(remoteFolderId.Value, localPath);
+            }
 
             _config = new SyncConfig
             {
@@ -55,26 +63,20 @@ namespace ClientApp.Services
                 LastSyncTime = DateTime.Now
             };
 
-            // Виконуємо початкову синхронізацію - завантажуємо всі існуючі файли
+            // Виконуємо початкову синхронізацію
             OnSyncStatusChanged("Початкова синхронізація...");
-            await SyncLocalToRemoteAsync();
+            await SyncBothWaysAsync();
 
             if (autoSync)
             {
                 StartAutoSync();
+                StartServerPolling();
             }
             else
             {
                 StopAutoSync();
+                StopServerPolling();
             }
-        }
-
-        /// <summary>
-        /// Налаштування синхронізації папки (синхронна версія для зворотної сумісності)
-        /// </summary>
-        public void ConfigureSync(string localPath, long? remoteFolderId = null, bool autoSync = false)
-        {
-            _ = ConfigureSyncAsync(localPath, remoteFolderId, autoSync);
         }
 
         /// <summary>
@@ -93,8 +95,7 @@ namespace ClientApp.Services
             {
                 NotifyFilter = NotifyFilters.FileName |
                               NotifyFilters.LastWrite |
-                              NotifyFilters.Size |
-                              NotifyFilters.CreationTime,
+                              NotifyFilters.Size,
                 EnableRaisingEvents = true,
                 IncludeSubdirectories = false
             };
@@ -105,12 +106,114 @@ namespace ClientApp.Services
             _watcher.Deleted += OnFileSystemDeleted;
             _watcher.Error += OnFileSystemError;
 
-            Debug.WriteLine($"FileSystemWatcher configured:");
-            Debug.WriteLine($"  - Path: {_watcher.Path}");
-            Debug.WriteLine($"  - NotifyFilter: {_watcher.NotifyFilter}");
-            Debug.WriteLine($"  - EnableRaisingEvents: {_watcher.EnableRaisingEvents}");
-
             OnSyncStatusChanged($"Автосинхронізація активована для {_config.LocalPath}");
+        }
+
+        /// <summary>
+        /// Запуск періодичної перевірки змін на сервері
+        /// </summary>
+        private void StartServerPolling()
+        {
+            // Перевіряємо зміни на сервері кожні 10 секунд
+            _serverPollingTimer = new Timer(async _ => await PollServerChanges(), null,
+                TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            Debug.WriteLine("[SYNC] Server polling started (every 10 seconds)");
+        }
+
+        /// <summary>
+        /// Зупинка періодичної перевірки
+        /// </summary>
+        private void StopServerPolling()
+        {
+            if (_serverPollingTimer != null)
+            {
+                _serverPollingTimer.Dispose();
+                _serverPollingTimer = null;
+                Debug.WriteLine("[SYNC] Server polling stopped");
+            }
+        }
+
+        /// <summary>
+        /// Перевірка змін на сервері
+        /// </summary>
+        private async Task PollServerChanges()
+        {
+            if (_isPolling || _config == null) return;
+
+            _isPolling = true;
+            try
+            {
+                Debug.WriteLine("[SYNC] Polling server for changes...");
+                var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId);
+
+                // Якщо помилка отримання - пропускаємо цей цикл
+                if (remoteFiles == null)
+                {
+                    Debug.WriteLine("[SYNC] Failed to poll server - will retry next cycle");
+                    return;
+                }
+
+                var localFiles = Directory.GetFiles(_config.LocalPath)
+                    .Select(f => Path.GetFileName(f))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // Перевірка нових/оновлених файлів на сервері
+                foreach (var remote in remoteFiles)
+                {
+                    var localPath = Path.Combine(_config.LocalPath, remote.Name);
+
+                    if (!File.Exists(localPath))
+                    {
+                        Debug.WriteLine($"[SYNC] New file on server, downloading: {remote.Name}");
+                        var success = await _fileService.DownloadFileAsync(remote.Id, localPath);
+                        if (success)
+                        {
+                            OnSyncStatusChanged($"📥 Завантажено з сервера: {remote.Name}");
+                        }
+                    }
+                    else
+                    {
+                        var localInfo = new FileInfo(localPath);
+                        if (remote.UpdatedAt > localInfo.LastWriteTime.AddSeconds(2))
+                        {
+                            Debug.WriteLine($"[SYNC] Server file is newer, downloading: {remote.Name}");
+                            var success = await _fileService.DownloadFileAsync(remote.Id, localPath);
+                            if (success)
+                            {
+                                OnSyncStatusChanged($"🔄 Оновлено з сервера: {remote.Name}");
+                            }
+                        }
+                    }
+                }
+
+                // Видаляємо локальні файли, які більше не існують на сервері
+                var remoteNames = remoteFiles.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var localFileName in localFiles)
+                {
+                    if (!remoteNames.Contains(localFileName))
+                    {
+                        var localPath = Path.Combine(_config.LocalPath, localFileName);
+                        try
+                        {
+                            File.Delete(localPath);
+                            Debug.WriteLine($"[SYNC] File deleted from server, removing local: {localFileName}");
+                            OnSyncStatusChanged($"🗑 Видалено локально: {localFileName}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[SYNC] Failed to delete local file: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SYNC] Error polling server: {ex.Message}");
+            }
+            finally
+            {
+                _isPolling = false;
+            }
         }
 
         private void OnFileSystemCreated(object sender, FileSystemEventArgs e)
@@ -153,8 +256,9 @@ namespace ClientApp.Services
                 _watcher.EnableRaisingEvents = false;
                 _watcher.Dispose();
                 _watcher = null;
-                OnSyncStatusChanged("Автосинхронізація зупинена");
             }
+            StopServerPolling();
+            OnSyncStatusChanged("Автосинхронізація зупинена");
         }
 
         /// <summary>
@@ -170,7 +274,6 @@ namespace ClientApp.Services
 
             try
             {
-                OnSyncStatusChanged("Початок синхронізації...");
                 var files = Directory.GetFiles(_config.LocalPath);
                 int uploaded = 0;
 
@@ -185,25 +288,27 @@ namespace ClientApp.Services
 
                     if (remoteByName.TryGetValue(fileName, out var remote))
                     {
-                        if (remote.UpdatedAt >= localInfo.LastWriteTime)
+                        // Файл існує - перевіряємо чи потрібно оновлення
+                        if (localInfo.LastWriteTime > remote.UpdatedAt.AddSeconds(2))
                         {
-                            continue;
+                            await _fileService.UpdateFileAsync(remote.Id, file);
+                            uploaded++;
+                            OnSyncStatusChanged($"📤 Оновлено: {fileName}");
                         }
-
-                        await _fileService.DeleteFileAsync(remote.Id);
                     }
-
-                    var result = await _fileService.UploadFileAsync(file, _config.RemoteFolderId);
-                    if (result != null)
+                    else
                     {
-                        uploaded++;
-                        OnSyncStatusChanged($"Завантажено: {fileName}");
+                        // Новий файл - завантажуємо
+                        var result = await _fileService.UploadFileAsync(file, _config.RemoteFolderId);
+                        if (result != null)
+                        {
+                            uploaded++;
+                            OnSyncStatusChanged($"📤 Завантажено: {fileName}");
+                        }
                     }
                 }
 
                 _config.LastSyncTime = DateTime.Now;
-                OnSyncStatusChanged($"Синхронізація завершена. Завантажено файлів: {uploaded}");
-
                 return uploaded;
             }
             catch (Exception ex)
@@ -227,12 +332,21 @@ namespace ClientApp.Services
 
             try
             {
-                OnSyncStatusChanged("Завантаження файлів з хмари...");
-
                 var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId);
-                var localFiles = Directory.GetFiles(_config.LocalPath).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // Перевірка на помилку отримання файлів
+                if (remoteFiles == null)
+                {
+                    Debug.WriteLine("[SYNC] Failed to fetch remote files - skipping sync");
+                    OnSyncStatusChanged("⚠️ Помилка зв'язку з сервером");
+                    return 0;
+                }
+
+                var localFiles = Directory.GetFiles(_config.LocalPath)
+                    .Select(Path.GetFileName)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var remoteByName = remoteFiles.ToDictionary(f => f.Name, f => f, StringComparer.OrdinalIgnoreCase);
-                
+
                 int downloaded = 0;
                 int deleted = 0;
 
@@ -244,32 +358,39 @@ namespace ClientApp.Services
                     if (File.Exists(localPath))
                     {
                         var localFileInfo = new FileInfo(localPath);
-                        if (localFileInfo.LastWriteTime >= file.UpdatedAt)
+                        if (file.UpdatedAt > localFileInfo.LastWriteTime.AddSeconds(2))
                         {
-                            continue;
+                            var success = await _fileService.DownloadFileAsync(file.Id, localPath);
+                            if (success)
+                            {
+                                downloaded++;
+                                OnSyncStatusChanged($"📥 Оновлено: {file.Name}");
+                            }
                         }
                     }
-
-                    var success = await _fileService.DownloadFileAsync(file.Id, localPath);
-                    if (success)
+                    else
                     {
-                        downloaded++;
-                        OnSyncStatusChanged($"Завантажено: {file.Name}");
+                        var success = await _fileService.DownloadFileAsync(file.Id, localPath);
+                        if (success)
+                        {
+                            downloaded++;
+                            OnSyncStatusChanged($"📥 Завантажено: {file.Name}");
+                        }
                     }
                 }
 
                 // Видаляємо локальні файли, які більше не існують на сервері
                 foreach (var localFileName in localFiles.ToList())
                 {
-                    if (!remoteByName.ContainsKey(localFileName))
+                    if (!remoteByName.ContainsKey(localFileName) &&
+                        !ShouldIgnore(Path.Combine(_config.LocalPath, localFileName)))
                     {
                         var localPath = Path.Combine(_config.LocalPath, localFileName);
                         try
                         {
                             File.Delete(localPath);
                             deleted++;
-                            OnSyncStatusChanged($"Видалено локально: {localFileName}");
-                            Debug.WriteLine($"[SYNC] Deleted local file: {localFileName}");
+                            OnSyncStatusChanged($"🗑 Видалено: {localFileName}");
                         }
                         catch (Exception ex)
                         {
@@ -279,9 +400,7 @@ namespace ClientApp.Services
                 }
 
                 _config.LastSyncTime = DateTime.Now;
-                OnSyncStatusChanged($"Синхронізація завершена. Завантажено: {downloaded}, видалено: {deleted}");
-
-                return downloaded;
+                return downloaded + deleted;
             }
             catch (Exception ex)
             {
@@ -297,7 +416,7 @@ namespace ClientApp.Services
         public async Task<(int uploaded, int downloaded)> SyncBothWaysAsync()
         {
             var uploaded = await SyncLocalToRemoteAsync();
-            await Task.Delay(1000);
+            await Task.Delay(500);
             var downloaded = await SyncRemoteToLocalAsync();
 
             return (uploaded, downloaded);
@@ -307,78 +426,59 @@ namespace ClientApp.Services
         {
             try
             {
-                Debug.WriteLine($"[SYNC] OnFileCreated: {filePath}");
+                if (ShouldIgnore(filePath)) return;
 
-                if (ShouldIgnore(filePath))
+                // Перевірка існування ПЕРЕД debounce
+                if (!File.Exists(filePath))
                 {
-                    Debug.WriteLine($"[SYNC] Ignored (system file): {filePath}");
+                    Debug.WriteLine($"[SYNC] File no longer exists: {Path.GetFileName(filePath)}");
                     return;
                 }
 
-                // Для Office файлів, що були перейменовані з тимчасових, чекаємо довше
-                var fileName = Path.GetFileName(filePath);
-                var isOfficeFile = fileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase) ||
-                                  fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
-                                  fileName.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase) ||
-                                  fileName.EndsWith(".doc", StringComparison.OrdinalIgnoreCase);
-
-                if (isOfficeFile)
-                {
-                    // Для Office файлів чекаємо більше часу та менш суворо дебаунс
-                    if (IsRapidDuplicate(filePath, 1000)) // 1 сек замість 2
-                    {
-                        Debug.WriteLine($"[SYNC] Ignored (duplicate event): {filePath}");
-                        return;
-                    }
-                    await Task.Delay(1000); // Додаткова затримка для Office
-                }
-                else
-                {
-                    if (IsRapidDuplicate(filePath))
-                    {
-                        Debug.WriteLine($"[SYNC] Ignored (duplicate event): {filePath}");
-                        return;
-                    }
-                }
+                if (IsRapidDuplicate(filePath)) return;
 
                 await WaitForFileReady(filePath);
 
-                var localInfo = new FileInfo(filePath);
+                // Додаткова перевірка після очікування
+                if (!File.Exists(filePath))
+                {
+                    Debug.WriteLine($"[SYNC] File disappeared during wait: {Path.GetFileName(filePath)}");
+                    return;
+                }
+
+                var fileName = Path.GetFileName(filePath);
                 var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId) ?? new List<FileItem>();
                 var existing = remoteFiles.FirstOrDefault(f => string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
 
                 if (existing != null)
                 {
-                    // Якщо файл існує, оновлюємо його замість створення нового
-                    Debug.WriteLine($"[SYNC] File exists, updating: {fileName}");
+                    Debug.WriteLine($"[SYNC] File exists on server, updating: {fileName}");
                     var updated = await _fileService.UpdateFileAsync(existing.Id, filePath);
                     if (updated != null)
                     {
                         _lastUploadedAt[filePath] = DateTime.UtcNow;
-                        OnSyncStatusChanged($"Оновлено: {fileName}");
-                        Debug.WriteLine($"[SYNC] Update successful: {fileName}");
+                        OnSyncStatusChanged($"🔄 Оновлено: {fileName}");
                     }
-                    return;
-                }
-
-                Debug.WriteLine($"[SYNC] Uploading new file: {fileName}");
-                var result = await _fileService.UploadFileAsync(filePath, _config.RemoteFolderId);
-
-                if (result != null)
-                {
-                    _lastUploadedAt[filePath] = DateTime.UtcNow;
-                    OnSyncStatusChanged($"Автоматично завантажено: {fileName}");
-                    Debug.WriteLine($"[SYNC] Upload successful: {fileName}");
                 }
                 else
                 {
-                    Debug.WriteLine($"[SYNC] Upload failed: {fileName}");
+                    Debug.WriteLine($"[SYNC] Uploading new file: {fileName}");
+                    var result = await _fileService.UploadFileAsync(filePath, _config.RemoteFolderId);
+
+                    if (result != null)
+                    {
+                        _lastUploadedAt[filePath] = DateTime.UtcNow;
+                        OnSyncStatusChanged($"📤 Завантажено: {fileName}");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[SYNC] Failed to upload: {fileName}");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[SYNC] Error auto-uploading file: {ex.Message}");
-                Debug.WriteLine($"[SYNC] Stack trace: {ex.StackTrace}");
+                Debug.WriteLine($"[SYNC] Error in OnFileCreated: {ex.Message}");
             }
         }
 
@@ -386,87 +486,63 @@ namespace ClientApp.Services
         {
             try
             {
-                Debug.WriteLine($"[SYNC] OnFileChanged: {filePath}");
+                if (ShouldIgnore(filePath)) return;
 
-                if (ShouldIgnore(filePath))
+                if (!File.Exists(filePath))
                 {
-                    Debug.WriteLine($"[SYNC] Ignored (system file): {filePath}");
+                    Debug.WriteLine($"[SYNC] File doesn't exist in OnFileChanged: {Path.GetFileName(filePath)}");
                     return;
                 }
 
-                if (IsRapidDuplicate(filePath, 3000)) // 3 секунди для Changed
-                {
-                    Debug.WriteLine($"[SYNC] Ignored (duplicate event): {filePath}");
-                    return;
-                }
+                if (IsRapidDuplicate(filePath, 3000)) return;
 
                 if (_lastUploadedAt.TryGetValue(filePath, out var lastUp) &&
                     (DateTime.UtcNow - lastUp).TotalSeconds < 10)
                 {
-                    Debug.WriteLine($"[SYNC] Ignored (recently uploaded): {filePath}");
+                    Debug.WriteLine($"[SYNC] Skipping change - recently uploaded: {Path.GetFileName(filePath)}");
                     return;
                 }
 
                 await WaitForFileReady(filePath);
-                var fileName = Path.GetFileName(filePath);
 
-                var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId)
-                                  ?? new List<FileItem>();
+                if (!File.Exists(filePath))
+                {
+                    Debug.WriteLine($"[SYNC] File disappeared during OnFileChanged: {Path.GetFileName(filePath)}");
+                    return;
+                }
+
+                var fileName = Path.GetFileName(filePath);
+                var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId) ?? new List<FileItem>();
                 var remote = remoteFiles.FirstOrDefault(f =>
                     string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
 
-                 if (remote != null)
-                 {
-                     var localInfo = new FileInfo(filePath);
-                     bool localNewer = localInfo.LastWriteTime > remote.UpdatedAt.AddSeconds(2);
-                     bool sizeDiffers = Math.Abs(remote.Size - localInfo.Length) > 100; // Толерантність 100 байт
+                if (remote != null)
+                {
+                    var localInfo = new FileInfo(filePath);
+                    bool localNewer = localInfo.LastWriteTime > remote.UpdatedAt.AddSeconds(2);
+                    bool sizeDiffers = Math.Abs(remote.Size - localInfo.Length) > 100;
 
-                     Debug.WriteLine($"[SYNC] Comparison for {fileName}:");
-                     Debug.WriteLine($"  Local time: {localInfo.LastWriteTime}, Remote time: {remote.UpdatedAt}");
-                     Debug.WriteLine($"  Local size: {localInfo.Length}, Remote size: {remote.Size}");
-                     Debug.WriteLine($"  LocalNewer: {localNewer}, SizeDiffers: {sizeDiffers}");
+                    if (localNewer || sizeDiffers)
+                    {
+                        Debug.WriteLine($"[SYNC] Updating changed file: {fileName} (newer={localNewer}, sizeDiff={sizeDiffers})");
+                        var updated = await _fileService.UpdateFileAsync(remote.Id, filePath);
 
-                     if (localNewer || sizeDiffers)
-                     {
-                         Debug.WriteLine($"[SYNC] Updating file on server: {fileName}");
-                         var updated = await _fileService.UpdateFileAsync(remote.Id, filePath);
-
-                         if (updated != null)
-                         {
-                             _lastUploadedAt[filePath] = DateTime.UtcNow;
-                             OnSyncStatusChanged($"Оновлено на сервері: {fileName}");
-                             Debug.WriteLine($"[SYNC] Update successful: {fileName}");
-                         }
-                         else
-                         {
-                             Debug.WriteLine($"[SYNC] Update failed: {fileName}");
-                             // Fallback: try delete and re-upload
-                             Debug.WriteLine($"[SYNC] Trying fallback: delete and re-upload");
-                             await _fileService.DeleteFileAsync(remote.Id);
-                             var uploaded = await _fileService.UploadFileAsync(filePath, _config.RemoteFolderId);
-                             if (uploaded != null)
-                             {
-                                 _lastUploadedAt[filePath] = DateTime.UtcNow;
-                                 OnSyncStatusChanged($"Перезавантажено на сервері: {fileName}");
-                                 Debug.WriteLine($"[SYNC] Fallback upload successful: {fileName}");
-                             }
-                         }
-                     }
-                     else
-                     {
-                         Debug.WriteLine($"[SYNC] No update needed: {fileName}");
-                     }
-                 }
-                 else
-                 {
-                     Debug.WriteLine($"[SYNC] File not found on server, uploading: {fileName}");
-                     await OnFileCreated(filePath);
-                 }
+                        if (updated != null)
+                        {
+                            _lastUploadedAt[filePath] = DateTime.UtcNow;
+                            OnSyncStatusChanged($"🔄 Оновлено: {fileName}");
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine($"[SYNC] File not found on server in OnFileChanged, creating: {fileName}");
+                    await OnFileCreated(filePath);
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[SYNC] Error handling file change: {ex.Message}");
-                Debug.WriteLine($"[SYNC] Stack trace: {ex.StackTrace}");
+                Debug.WriteLine($"[SYNC] Error in OnFileChanged: {ex.Message}");
             }
         }
 
@@ -475,39 +551,26 @@ namespace ClientApp.Services
             try
             {
                 Debug.WriteLine($"[SYNC] OnFileDeleted: {fileName}");
-
-                // Додаємо невелику затримку перед видаленням
                 await Task.Delay(500);
 
-                var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId)
-                                  ?? new List<FileItem>();
+                var remoteFiles = await _fileService.GetFilesAsync(_config.RemoteFolderId) ?? new List<FileItem>();
                 var remote = remoteFiles.FirstOrDefault(f =>
                     string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
 
                 if (remote != null)
                 {
-                    Debug.WriteLine($"[SYNC] Deleting from server: {fileName} (ID: {remote.Id})");
+                    Debug.WriteLine($"[SYNC] Deleting from server: {fileName}");
                     var success = await _fileService.DeleteFileAsync(remote.Id);
 
                     if (success)
                     {
                         OnSyncStatusChanged($"Видалено з сервера: {fileName}");
-                        Debug.WriteLine($"[SYNC] Delete successful: {fileName}");
                     }
-                    else
-                    {
-                        Debug.WriteLine($"[SYNC] Delete failed: {fileName}");
-                    }
-                }
-                else
-                {
-                    Debug.WriteLine($"[SYNC] File not found on server: {fileName}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[SYNC] Error handling file deletion: {ex.Message}");
-                Debug.WriteLine($"[SYNC] Stack trace: {ex.StackTrace}");
+                Debug.WriteLine($"[SYNC] Error in OnFileDeleted: {ex.Message}");
             }
         }
 
@@ -530,9 +593,8 @@ namespace ClientApp.Services
                 if (string.IsNullOrWhiteSpace(name)) return true;
                 if (Directory.Exists(filePath)) return true;
 
-                // Ignore common temp/lock artifacts
                 if (name.StartsWith("~$")) return true;
-                if (name.StartsWith(".")) return true; // Hidden files
+                if (name.StartsWith(".")) return true;
                 var ext = Path.GetExtension(name)?.ToLower();
                 if (ext == ".tmp" || ext == ".temp" || ext == ".part" || ext == ".crdownload") return true;
                 return false;
@@ -543,19 +605,20 @@ namespace ClientApp.Services
         private bool IsRapidDuplicate(string filePath, int debounceMs = 2000)
         {
             var now = DateTime.UtcNow;
-            var last = _lastEventAt.GetOrAdd(filePath, now);
-            var isDuplicate = (now - last).TotalMilliseconds < debounceMs;
-            _lastEventAt[filePath] = now;
-            
-            // Для файлів, що не існують (були видалені або перейменовані), не вважаємо дублікатом
-            if (!File.Exists(filePath))
-            {
-                return false;
-            }
-            
-            return isDuplicate;
-        }
 
+            if (_lastEventAt.TryGetValue(filePath, out var last))
+            {
+                var isDuplicate = (now - last).TotalMilliseconds < debounceMs;
+                if (isDuplicate)
+                {
+                    Debug.WriteLine($"[SYNC] Debouncing rapid event for: {Path.GetFileName(filePath)}");
+                    return true;
+                }
+            }
+
+            _lastEventAt[filePath] = now;
+            return false;
+        }
         private async Task WaitForFileReady(string filePath)
         {
             for (int i = 0; i < 10; i++)
@@ -564,17 +627,14 @@ namespace ClientApp.Services
                 {
                     using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
                     {
-                        Debug.WriteLine($"[SYNC] File ready: {filePath}");
                         return;
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Debug.WriteLine($"[SYNC] File not ready (attempt {i + 1}): {ex.Message}");
                     await Task.Delay(250);
                 }
             }
-            Debug.WriteLine($"[SYNC] WARNING: File may not be fully ready: {filePath}");
         }
     }
 }

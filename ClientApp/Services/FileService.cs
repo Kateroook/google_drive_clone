@@ -33,6 +33,7 @@ namespace ClientApp.Services
         /// <summary>
         /// Отримання списку всіх файлів користувача
         /// </summary>
+        /// 
         public async Task<List<FileItem>> GetFilesAsync(long? folderId = null)
         {
             try
@@ -48,16 +49,68 @@ namespace ClientApp.Services
                 {
                     var content = await response.Content.ReadAsStringAsync();
                     var result = JsonConvert.DeserializeObject<ApiResponse<List<FileItem>>>(content);
-                    return result.Data ?? new List<FileItem>();
+                    return result.Data ?? new List<FileItem>(); // Порожній список = папка порожня
                 }
 
                 Debug.WriteLine($"Failed to get files: {response.StatusCode}");
-                return new List<FileItem>();
+                return null; // null = помилка запиту
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error getting files: {ex.Message}");
+                return null; // null = помилка
+            }
+        }
+
+        /// <summary>
+        /// Отримання ВСІХ файлів користувача (незалежно від папки)
+        /// </summary>
+        public async Task<List<FileItem>> GetAllFilesAsync()
+        {
+            try
+            {
+                SetAuthHeader();
+                var response = await _httpClient.GetAsync($"{_serverUrl}/api/files/all");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<ApiResponse<List<FileItem>>>(content);
+                    return result.Data ?? new List<FileItem>();
+                }
+
                 return new List<FileItem>();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error getting all files: {ex.Message}");
+                return new List<FileItem>();
+            }
+        }
+
+        /// <summary>
+        /// Отримання ВСІХ папок користувача
+        /// </summary>
+        public async Task<List<FolderItem>> GetAllFoldersAsync()
+        {
+            try
+            {
+                SetAuthHeader();
+                var response = await _httpClient.GetAsync($"{_serverUrl}/api/folders/all");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<ApiResponse<List<FolderItem>>>(content);
+                    return result.Data ?? new List<FolderItem>();
+                }
+
+                return new List<FolderItem>();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error getting all folders: {ex.Message}");
+                return new List<FolderItem>();
             }
         }
 
@@ -155,7 +208,7 @@ namespace ClientApp.Services
         }
 
         /// <summary>
-        /// Оновлення існуючого файлу (зберігає created_at, оновлює updated_at)
+        /// Оновлення існуючого файлу (перезавантаження)
         /// </summary>
         public async Task<FileItem> UpdateFileAsync(long fileId, string newFilePath)
         {
@@ -167,20 +220,21 @@ namespace ClientApp.Services
                 {
                     var fileContent = new ByteArrayContent(File.ReadAllBytes(newFilePath));
                     fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
+
                     content.Add(fileContent, "file", Path.GetFileName(newFilePath));
 
                     var response = await _httpClient.PutAsync($"{_serverUrl}/api/files/{fileId}", content);
+
                     if (response.IsSuccessStatusCode)
                     {
                         var responseContent = await response.Content.ReadAsStringAsync();
                         var result = JsonConvert.DeserializeObject<ApiResponse<FileItem>>(responseContent);
-                        Debug.WriteLine($"File updated successfully: {Path.GetFileName(newFilePath)}");
                         return result.Data;
                     }
 
                     Debug.WriteLine($"Update failed: {response.StatusCode}");
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    Debug.WriteLine($"Error response: {errorContent}");
+                    Debug.WriteLine($"Error content: {errorContent}");
                     return null;
                 }
             }
@@ -272,16 +326,15 @@ namespace ClientApp.Services
         /// <summary>
         /// Створення нової папки
         /// </summary>
-        public async Task<FolderItem> CreateFolderAsync(string name, long? parentId = null)
+        public async Task<FolderItem> CreateFolderAsync(string name, long? parentId = null, string localSyncPath = "")
         {
             try
             {
                 SetAuthHeader();
 
-                // Логування для діагностики
-                Debug.WriteLine($"Creating folder: name='{name}', parentId={parentId}");
+                Debug.WriteLine($"Creating folder: name='{name}', parentId={parentId}, syncPath={localSyncPath}");
 
-                var data = new { name, parent_id = parentId };
+                var data = new { name, parent_id = parentId, sync_path = localSyncPath };
                 var json = JsonConvert.SerializeObject(data);
                 Debug.WriteLine($"Request JSON: {json}");
 
@@ -309,6 +362,63 @@ namespace ClientApp.Services
             {
                 Debug.WriteLine($"Error creating folder: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Оновлення папки (встановлення/видалення синхронізації)
+        /// </summary>
+        public async Task<FolderItem> UpdateFolderSyncAsync(long folderId, string localSyncPath)
+        {
+            try
+            {
+                SetAuthHeader();
+
+                var data = new { sync_path = localSyncPath };
+                var json = JsonConvert.SerializeObject(data);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PutAsync($"{_serverUrl}/api/folders/{folderId}", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<ApiResponse<FolderItem>>(responseContent);
+                    return result.Data;
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating folder sync: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Видалення папки
+        /// </summary>
+        public async Task<bool> DeleteFolderAsync(long folderId)
+        {
+            try
+            {
+                SetAuthHeader();
+                var response = await _httpClient.DeleteAsync($"{_serverUrl}/api/folders/{folderId}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Debug.WriteLine($"Folder deleted: {folderId}");
+                    return true;
+                }
+
+                Debug.WriteLine($"Delete folder failed: {response.StatusCode}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error deleting folder: {ex.Message}");
+                return false;
             }
         }
     }
