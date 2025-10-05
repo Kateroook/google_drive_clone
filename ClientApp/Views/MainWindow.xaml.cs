@@ -166,9 +166,24 @@ namespace ClientApp
         {
             try
             {
-                var folders = _showAllFiles
-                    ? new List<FolderItem>()
-                    : await _fileService.GetFoldersAsync(_currentFolderId);
+                List<FolderItem> folders;
+
+                if (_showAllFiles)
+                {
+                    // Режим "All Files" - не показуємо папки
+                    folders = new List<FolderItem>();
+                }
+                else if (_currentFolderId == null)
+                {
+                    // Головна сторінка - тільки папки верхнього рівня
+                    var allFolders = await _fileService.GetFoldersAsync(null);
+                    folders = allFolders;
+                }
+                else
+                {
+                    // Всередині папки - підпапки
+                    folders = await _fileService.GetFoldersAsync(_currentFolderId);
+                }
 
                 _allFolders.Clear();
                 foreach (var folder in folders)
@@ -188,9 +203,23 @@ namespace ClientApp
             {
                 StatusText.Text = "Loading...";
 
-                var files = _showAllFiles
-                    ? await _fileService.GetAllFilesAsync()
-                    : await _fileService.GetFilesAsync(_currentFolderId);
+                List<FileItem> files;
+
+                if (_showAllFiles)
+                {
+                    // Режим "All Files" - GetFilesAsync() без параметрів = всі файли
+                    files = await _fileService.GetFilesAsync();
+                }
+                else if (_currentFolderId == null)
+                {
+                    // Головна сторінка - передаємо 0 як сигнал для файлів без папки
+                    files = await _fileService.GetFilesAsync(0);
+                }
+                else
+                {
+                    // Всередині папки
+                    files = await _fileService.GetFilesAsync(_currentFolderId);
+                }
 
                 _allFiles.Clear();
                 foreach (var file in files)
@@ -218,7 +247,7 @@ namespace ClientApp
             switch (filterIndex)
             {
                 case 1:
-                    filtered = _allFiles.Where(f => f.Extension == ".py");
+                    filtered = _allFiles.Where(f => f.Extension == ".js");
                     break;
                 case 2:
                     filtered = _allFiles.Where(f => f.IsImage);
@@ -234,10 +263,33 @@ namespace ClientApp
             _filteredFiles = filtered.ToList();
             _filteredFolders = _allFolders?.ToList() ?? new List<FolderItem>();
         }
+        private void ApplySort()
+        {
+            if (SortComboBox == null || _filteredFiles == null) return;
+
+            var sortIndex = SortComboBox.SelectedIndex;
+
+            switch (sortIndex)
+            {
+                case 0: // Type A-Z (Extension)
+                    _filteredFiles = _filteredFiles.OrderBy(f => f.Extension ?? string.Empty).ThenBy(f => f.Name).ToList();
+                    break;
+                case 1: // Type Z-A (Extension)
+                    _filteredFiles = _filteredFiles.OrderByDescending(f => f.Extension ?? string.Empty).ThenBy(f => f.Name).ToList();
+                    break;
+            }
+            _filteredFolders = _filteredFolders?.OrderBy(f => f.Name).ToList() ?? new List<FolderItem>();
+        }
+
+        private void SortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateUI();
+        }
 
         private void UpdateUI()
         {
             ApplyFilter();
+            ApplySort();
 
             if (ItemsPanel == null)
             {
@@ -684,8 +736,11 @@ namespace ClientApp
                         if (result != null) uploaded++;
                     }
 
-                    await Task.Delay(2000);
-                    await _syncService.ConfigureSyncAsync(localPath, folder.Id, true);
+                    await Task.Delay(1000);
+
+                    // Нова папка - потрібна початкова синхронізація
+                    Debug.WriteLine($"[MAIN] Setting up sync for newly uploaded folder {folder.Id}");
+                    await _syncService.ConfigureSyncAsync(localPath, folder.Id, autoSync: true, performInitialSync: true);
 
                     await LoadDataAsync();
                     MessageBox.Show($"Folder '{folderName}' created with {uploaded} files.\nAuto-sync enabled!",
@@ -693,7 +748,6 @@ namespace ClientApp
                 }
             }
         }
-
         private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new TextInputDialog("Enter folder name:");
@@ -959,7 +1013,54 @@ namespace ClientApp
                         "unsafe", "ushort", "using", "var", "virtual", "void", "volatile", "while",
                         "async", "await"
                     };
+                case ".py":
+                    return new HashSet<string>
+                    {
+                        "False", "None", "True", "and", "as", "assert", "async", "await", "break",
+                        "class", "continue", "def", "del", "elif", "else", "except", "finally",
+                        "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
+                        "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"
+                    };
 
+                case ".js":
+                case ".ts":
+                    return new HashSet<string>
+                    {
+                        "abstract", "arguments", "await", "boolean", "break", "byte", "case", "catch",
+                        "char", "class", "const", "continue", "debugger", "default", "delete", "do",
+                        "double", "else", "enum", "eval", "export", "extends", "false", "final",
+                        "finally", "float", "for", "function", "goto", "if", "implements", "import",
+                        "in", "instanceof", "int", "interface", "let", "long", "native", "new",
+                        "null", "package", "private", "protected", "public", "return", "short",
+                        "static", "super", "switch", "synchronized", "this", "throw", "throws",
+                        "transient", "true", "try", "typeof", "var", "void", "volatile", "while",
+                        "with", "yield"
+                    };
+
+                case ".cpp":
+                case ".c":
+                case ".h":
+                    return new HashSet<string>
+                    {
+                        "auto", "break", "case", "char", "const", "continue", "default", "do",
+                        "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline",
+                        "int", "long", "register", "restrict", "return", "short", "signed", "sizeof",
+                        "static", "struct", "switch", "typedef", "union", "unsigned", "void",
+                        "volatile", "while", "bool", "class", "namespace", "private", "public",
+                        "protected", "virtual", "template", "typename"
+                    };
+
+                case ".java":
+                    return new HashSet<string>
+                    {
+                        "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
+                        "class", "const", "continue", "default", "do", "double", "else", "enum",
+                        "extends", "final", "finally", "float", "for", "goto", "if", "implements",
+                        "import", "instanceof", "int", "interface", "long", "native", "new", "package",
+                        "private", "protected", "public", "return", "short", "static", "strictfp",
+                        "super", "switch", "synchronized", "this", "throw", "throws", "transient",
+                        "try", "void", "volatile", "while"
+                    };
                 default:
                     return new HashSet<string>();
             }
@@ -1005,14 +1106,17 @@ namespace ClientApp
             {
                 if (string.IsNullOrEmpty(_currentFolder.SyncPath))
                 {
+                    // НОВА синхронізація - потрібна початкова синхронізація
                     var dialog = new FolderPickerDialog();
                     if (dialog.ShowDialog() == true)
                     {
+                        Debug.WriteLine($"[MAIN] Setting up NEW sync for folder {_currentFolder.Id}");
                         var updated = await _fileService.UpdateFolderSyncAsync(_currentFolder.Id, dialog.SelectedPath);
                         if (updated != null)
                         {
                             _currentFolder.SyncPath = dialog.SelectedPath;
-                            await _syncService.ConfigureSyncAsync(dialog.SelectedPath, _currentFolder.Id, true);
+                            // performInitialSync = true (за замовчуванням)
+                            await _syncService.ConfigureSyncAsync(dialog.SelectedPath, _currentFolder.Id, autoSync: true, performInitialSync: true);
                             UpdateSyncStatus();
                         }
                         else
@@ -1027,7 +1131,9 @@ namespace ClientApp
                 }
                 else
                 {
-                    await _syncService.ConfigureSyncAsync(_currentFolder.SyncPath, _currentFolder.Id, true);
+                    // ІСНУЮЧА синхронізація - просто активуємо без початкової синхронізації
+                    Debug.WriteLine($"[MAIN] Activating EXISTING sync for folder {_currentFolder.Id}");
+                    await _syncService.ActivateExistingSyncAsync(_currentFolder.SyncPath, _currentFolder.Id);
                 }
             }
             else
@@ -1040,6 +1146,7 @@ namespace ClientApp
 
                     if (result == MessageBoxResult.Yes)
                     {
+                        Debug.WriteLine($"[MAIN] Removing sync for folder {_currentFolder.Id}");
                         await _fileService.UpdateFolderSyncAsync(_currentFolder.Id, null);
                         _currentFolder.SyncPath = null;
                         _syncService.StopAutoSync();
@@ -1052,7 +1159,6 @@ namespace ClientApp
                 }
             }
         }
-
         private async void SyncUpload_Click(object sender, RoutedEventArgs e)
         {
             if (_currentFolder == null || string.IsNullOrEmpty(_currentFolder.SyncPath))

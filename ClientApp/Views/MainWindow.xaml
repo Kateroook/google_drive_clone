@@ -164,9 +164,15 @@
                     <TextBlock Text="Filter" FontWeight="SemiBold" Foreground="#202124" Margin="12,12,0,8"/>
                     <ComboBox x:Name="FilterComboBox" Margin="8" SelectionChanged="FilterComboBox_SelectionChanged">
                         <ComboBoxItem Content="All Files" IsSelected="True"/>
-                        <ComboBoxItem Content="Python (.py)"/>
-                        <ComboBoxItem Content="Images (.jpg)"/>
+                        <ComboBoxItem Content="JavaScript (.js)"/>
+                        <ComboBoxItem Content="Images (.png)"/>
                         <ComboBoxItem Content="Code Files"/>
+                    </ComboBox>
+
+                    <TextBlock Text="Sort" FontWeight="SemiBold" Foreground="#202124" Margin="12,12,0,8"/>
+                    <ComboBox x:Name="SortComboBox" Margin="8" SelectionChanged="SortComboBox_SelectionChanged">
+                        <ComboBoxItem Content="Type (A-Z)" IsSelected="True"/>
+                        <ComboBoxItem Content="Type (Z-A)" />                       
                     </ComboBox>
                 </StackPanel>
             </Border>

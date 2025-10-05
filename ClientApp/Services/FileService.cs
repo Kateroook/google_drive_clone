@@ -48,16 +48,17 @@ namespace ClientApp.Services
                 {
                     var content = await response.Content.ReadAsStringAsync();
                     var result = JsonConvert.DeserializeObject<ApiResponse<List<FileItem>>>(content);
-                    return result.Data ?? new List<FileItem>();
+                    return result.Data ?? new List<FileItem>(); // Порожній список = успіх, але папка порожня
                 }
 
+               
                 Debug.WriteLine($"Failed to get files: {response.StatusCode}");
-                return new List<FileItem>();
+                return null; // null = помилка сервера/мережі
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error getting files: {ex.Message}");
-                return new List<FileItem>();
+                return null;
             }
         }
 
