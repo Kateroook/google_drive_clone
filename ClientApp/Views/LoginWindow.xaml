@@ -21,7 +21,7 @@
                            Foreground="#1976D2"
                            Margin="0,0,0,10"/>
 
-                <TextBlock Text="My Cloud Drive" 
+                <TextBlock Text="Cool Drive" 
                            FontSize="24" 
                            FontWeight="Bold"
                            HorizontalAlignment="Center"
@@ -30,7 +30,7 @@
 
                 <!-- Status Text -->
                 <TextBlock x:Name="StatusText" 
-                           Text="Sign in to access your files" 
+                           Text="Увійдіть для доступу до файлів" 
                            FontSize="14"
                            HorizontalAlignment="Center"
                            Foreground="#666666"
@@ -40,7 +40,7 @@
 
                 <!-- Login Button -->
                 <Button x:Name="LoginButton" 
-                        Content="Sign in with Google" 
+                        Content="Увійти з Google" 
                         Click="LoginButton_Click"
                         Height="50"
                         FontSize="16"
@@ -101,17 +101,9 @@
                            HorizontalAlignment="Center"
                            Margin="0,20,0,0">
                     <TextBlock Text="⌛" FontSize="20" Margin="0,0,10,0"/>
-                    <TextBlock Text="Authenticating..." FontSize="14" Foreground="#666666"/>
+                    <TextBlock Text="Автентифікація..." FontSize="14" Foreground="#666666"/>
                 </StackPanel>
 
-                <!-- Info Text -->
-                <TextBlock Text="Secure sign-in with your Google account" 
-                           FontSize="12"
-                           HorizontalAlignment="Center"
-                           Foreground="#999999"
-                           Margin="0,30,0,0"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center"/>
             </StackPanel>
         </Border>
     </Grid>

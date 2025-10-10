@@ -21,6 +21,10 @@ namespace ClientApp.Services
         private string _codeChallenge;
         private string _state;
 
+        // Ідентифікація клієнта
+        private const string CLIENT_TYPE = "desktop";
+        private const string REDIRECT_URI = "http://localhost:5005/callback";
+
         // Вибір методу зберігання токенів
         private readonly bool _useCredentialManager = true;
 
@@ -77,7 +81,7 @@ namespace ClientApp.Services
         /// </summary>
         public async Task<bool> AuthenticateAsync()
         {
-            Debug.WriteLine("Starting authentication process...");
+            Debug.WriteLine("=== Starting Desktop Client Authentication ===");
             try
             {
                 // Генерація PKCE параметрів
@@ -86,14 +90,28 @@ namespace ClientApp.Services
                 Debug.WriteLine($"Code Challenge: {_codeChallenge}");
                 Debug.WriteLine($"State: {_state}");
 
-                // ВИПРАВЛЕННЯ: Запускаємо listener і відразу відкриваємо браузер
+                // Створюємо структурований state об'єкт
+                var stateObject = new
+                {
+                    value = _state,
+                    client = CLIENT_TYPE,
+                    redirect = REDIRECT_URI
+                };
+
+                var stateJson = JsonConvert.SerializeObject(stateObject);
+                Debug.WriteLine($"State object: {stateJson}");
+
+                // Кодуємо state в Base64URL
+                var stateBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(stateJson));
+                Debug.WriteLine($"Encoded state: {stateBase64}");
+
+                // Запускаємо listener і відразу відкриваємо браузер
                 var callbackTask = StartLocalCallbackServerAsync();
 
-                // Невелика затримка для гарантії що listener запущений
                 await Task.Delay(500);
 
                 // Відкриття браузера для аутентифікації
-                var authUrl = $"{_serverUrl}/auth/google?code_challenge={_codeChallenge}&state={_state}";
+                var authUrl = $"{_serverUrl}/auth/google?code_challenge={_codeChallenge}&state={WebUtility.UrlEncode(stateBase64)}";
                 Debug.WriteLine($"Opening browser to: {authUrl}");
 
                 var psi = new ProcessStartInfo
@@ -104,9 +122,10 @@ namespace ClientApp.Services
                 Process.Start(psi);
 
                 // Чекаємо завершення callback
-                await callbackTask;
+                var success = await callbackTask;
 
-                return true;
+                Debug.WriteLine($"=== Authentication Process Completed: {(success ? "Success" : "Failed")} ===");
+                return success;
             }
             catch (Exception ex)
             {
@@ -119,14 +138,14 @@ namespace ClientApp.Services
         /// <summary>
         /// Запуск локального HTTP сервера для отримання callback
         /// </summary>
-        private async Task StartLocalCallbackServerAsync()
+        private async Task<bool> StartLocalCallbackServerAsync()
         {
             try
             {
                 _httpListener = new HttpListener();
-                _httpListener.Prefixes.Add("http://localhost:5005/callback/");
+                _httpListener.Prefixes.Add($"{REDIRECT_URI}/");
                 _httpListener.Start();
-                Debug.WriteLine("Listening for OAuth callback on http://localhost:5005/callback/");
+                Debug.WriteLine($"Listening for OAuth callback on {REDIRECT_URI}");
 
                 // Очікуємо запит від браузера
                 var context = await _httpListener.GetContextAsync();
@@ -140,52 +159,47 @@ namespace ClientApp.Services
                 var state = request.QueryString["state"];
                 var error = request.QueryString["error"];
 
-                Debug.WriteLine($"Callback parameters - code: {code?.Substring(0, Math.Min(10, code?.Length ?? 0))}..., state: {state}, error: {error}");
+                Debug.WriteLine($"Callback parameters:");
+                Debug.WriteLine($"  - code: {code?.Substring(0, Math.Min(10, code?.Length ?? 0))}...");
+                Debug.WriteLine($"  - state: {state}");
+                Debug.WriteLine($"  - error: {error}");
+
+                bool authSuccess = false;
 
                 // Відправка відповіді в браузер
                 string responseString;
                 if (!string.IsNullOrEmpty(error))
                 {
-                    Debug.WriteLine($"Authentication failed with error: {error}");
-                    responseString = @"
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <title>Authentication Failed</title>
-                            <style>
-                                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                                h1 { color: #dc3545; }
-                            </style>
-                        </head>
-                        <body>
-                            <h1>❌ Authentication Failed</h1>
-                            <p>An error occurred during authentication.</p>
-                            <p>You can close this window and return to the application.</p>
-                        </body>
-                        </html>";
+                    Debug.WriteLine($"❌ Authentication failed with error: {error}");
+                    responseString = GenerateErrorPage(error);
+                }
+                else if (string.IsNullOrEmpty(code))
+                {
+                    Debug.WriteLine("❌ No authorization code received");
+                    responseString = GenerateErrorPage("no_code");
+                }
+                else if (state != _state)
+                {
+                    Debug.WriteLine($"❌ State mismatch! Expected: {_state}, Received: {state}");
+                    responseString = GenerateErrorPage("state_mismatch");
                 }
                 else
                 {
-                    Debug.WriteLine("Authentication successful, sending success page.");
-                    responseString = @"
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <title>Authentication Successful</title>
-                            <style>
-                                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                                h1 { color: #28a745; }
-                            </style>
-                        </head>
-                        <body>
-                            <h1>✓ Authentication Successful</h1>
-                            <p>You have been successfully authenticated.</p>
-                            <p>You can close this window and return to the application.</p>
-                            <script>
-                                setTimeout(function() { window.close(); }, 3000);
-                            </script>
-                        </body>
-                        </html>";
+                    Debug.WriteLine("✅ State verified successfully");
+                    Debug.WriteLine("Exchanging code for token...");
+
+                    authSuccess = await ExchangeCodeForToken(code);
+
+                    if (authSuccess)
+                    {
+                        Debug.WriteLine("✅ Authentication successful!");
+                        responseString = GenerateSuccessPage();
+                    }
+                    else
+                    {
+                        Debug.WriteLine("❌ Token exchange failed");
+                        responseString = GenerateErrorPage("token_exchange_failed");
+                    }
                 }
 
                 byte[] buffer = Encoding.UTF8.GetBytes(responseString);
@@ -200,21 +214,7 @@ namespace ClientApp.Services
                 _httpListener.Stop();
                 Debug.WriteLine("HTTP listener stopped.");
 
-                // Обробка отриманого коду
-                if (!string.IsNullOrEmpty(code) && state == _state)
-                {
-                    Debug.WriteLine("State verified successfully, exchanging code for token...");
-                    await ExchangeCodeForToken(code);
-                    Debug.WriteLine("Token exchange completed.");
-                }
-                else if (state != _state)
-                {
-                    Debug.WriteLine($"ERROR: State mismatch! Expected: {_state}, Received: {state}");
-                }
-                else
-                {
-                    Debug.WriteLine("ERROR: No authorization code received.");
-                }
+                return authSuccess;
             }
             catch (HttpListenerException ex)
             {
@@ -243,11 +243,11 @@ namespace ClientApp.Services
         /// <summary>
         /// Обмін authorization code на JWT токен
         /// </summary>
-        private async Task ExchangeCodeForToken(string code)
+        private async Task<bool> ExchangeCodeForToken(string code)
         {
             try
             {
-                Debug.WriteLine("Exchanging authorization code for token...");
+                Debug.WriteLine("=== Token Exchange ===");
 
                 var tokenRequest = new
                 {
@@ -257,7 +257,7 @@ namespace ClientApp.Services
                 };
 
                 var json = JsonConvert.SerializeObject(tokenRequest);
-                Debug.WriteLine($"Token request: {json}");
+                Debug.WriteLine($"Token request payload: {json}");
 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -265,32 +265,154 @@ namespace ClientApp.Services
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 Debug.WriteLine($"Token response status: {response.StatusCode}");
-                Debug.WriteLine($"Token response content: {responseContent}");
+                Debug.WriteLine($"Token response: {responseContent}");
 
                 if (response.IsSuccessStatusCode)
                 {
                     var tokenResponse = JsonConvert.DeserializeObject<TokenResponse>(responseContent);
 
                     _accessToken = tokenResponse.AccessToken;
-                    Debug.WriteLine($"Access token received: {_accessToken.Substring(0, Math.Min(20, _accessToken.Length))}...");
+                    Debug.WriteLine($"✅ Access token received: {_accessToken.Substring(0, Math.Min(20, _accessToken.Length))}...");
+                    Debug.WriteLine($"   Token type: {tokenResponse.TokenType}");
+                    Debug.WriteLine($"   Client type: {tokenResponse.ClientType}");
+                    Debug.WriteLine($"   Expires in: {tokenResponse.ExpiresIn} seconds");
 
                     // Зберігання токену
                     SaveTokenSecurely(_accessToken);
-                    Debug.WriteLine("Token saved securely.");
+                    Debug.WriteLine("✅ Token saved securely");
+
+                    return true;
                 }
                 else
                 {
-                    Debug.WriteLine($"ERROR: Token exchange failed with status {response.StatusCode}");
+                    Debug.WriteLine($"❌ Token exchange failed with status {response.StatusCode}");
                     Debug.WriteLine($"Response: {responseContent}");
+                    return false;
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Token exchange error: {ex.Message}");
+                Debug.WriteLine($"❌ Token exchange error: {ex.Message}");
                 Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                return false;
             }
         }
 
+        /// <summary>
+        /// Генерація HTML сторінки успіху
+        /// </summary>
+        private string GenerateSuccessPage()
+        {
+            return @"
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Successful</title>
+                    <meta charset='utf-8'>
+                    <style>
+                        body { 
+                            font-family: 'Segoe UI', Arial, sans-serif; 
+                            text-align: center; 
+                            padding: 50px;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                        }
+                        .container {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 15px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                            max-width: 500px;
+                            margin: 0 auto;
+                            color: #333;
+                        }
+                        h1 { color: #28a745; margin-top: 0; }
+                        .icon { font-size: 64px; margin-bottom: 20px; }
+                        .client-badge {
+                            display: inline-block;
+                            background: #667eea;
+                            color: white;
+                            padding: 5px 15px;
+                            border-radius: 20px;
+                            font-size: 14px;
+                            margin-top: 10px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='icon'>✓</div>
+                        <h1>Authentication Successful</h1>
+                        <p>You have been successfully authenticated.</p>
+                        <div class='client-badge'>🖥️ Desktop Client</div>
+                        <p style='margin-top: 30px; color: #666;'>You can close this window and return to the application.</p>
+                    </div>
+                    <script>
+                        setTimeout(function() { window.close(); }, 3000);
+                    </script>
+                </body>
+                </html>";
+        }
+
+        /// <summary>
+        /// Генерація HTML сторінки помилки
+        /// </summary>
+        private string GenerateErrorPage(string error)
+        {
+            string errorMessage = error switch
+            {
+                "state_mismatch" => "Security validation failed. Please try again.",
+                "no_code" => "No authorization code received from server.",
+                "token_exchange_failed" => "Failed to exchange authorization code for token.",
+                _ => "An error occurred during authentication."
+            };
+
+            return $@"
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Failed</title>
+                    <meta charset='utf-8'>
+                    <style>
+                        body {{ 
+                            font-family: 'Segoe UI', Arial, sans-serif; 
+                            text-align: center; 
+                            padding: 50px;
+                            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                            color: white;
+                        }}
+                        .container {{
+                            background: white;
+                            padding: 40px;
+                            border-radius: 15px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                            max-width: 500px;
+                            margin: 0 auto;
+                            color: #333;
+                        }}
+                        h1 {{ color: #dc3545; margin-top: 0; }}
+                        .icon {{ font-size: 64px; margin-bottom: 20px; }}
+                        .error-code {{
+                            background: #f8d7da;
+                            color: #721c24;
+                            padding: 10px;
+                            border-radius: 5px;
+                            margin-top: 20px;
+                            font-family: monospace;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='icon'>❌</div>
+                        <h1>Authentication Failed</h1>
+                        <p>{errorMessage}</p>
+                        <div class='error-code'>Error: {error}</div>
+                        <p style='margin-top: 30px; color: #666;'>You can close this window and return to the application.</p>
+                    </div>
+                </body>
+                </html>";
+        }
         /// <summary>
         /// Отримання інформації про користувача
         /// </summary>
@@ -427,6 +549,7 @@ namespace ClientApp.Services
 
         [JsonProperty("expires_in")]
         public int ExpiresIn { get; set; }
+        public object ClientType { get; internal set; }
     }
 
     public class UserInfo

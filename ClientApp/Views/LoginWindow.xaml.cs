@@ -20,7 +20,6 @@ namespace ClientApp.Views
     /// </summary>
     public partial class LoginWindow : Window
     {
-        public ApiService ApiService { get; }
         private readonly OAuthService _oAuthService = new OAuthService();
         public LoginWindow()
         {
@@ -35,7 +34,7 @@ namespace ClientApp.Views
 
             if (_oAuthService.IsAuthenticated)
             {
-                StatusText.Text = "Verifying stored credentials...";
+                StatusText.Text = "Перевірка облікових даних...";
                 
                 var userInfo = await _oAuthService.GetUserInfoAsync();
                 if (userInfo != null)
@@ -44,7 +43,7 @@ namespace ClientApp.Views
                 }
                 else
                 {
-                    StatusText.Text = "Sign in to access your files.";
+                    StatusText.Text = "Увійдіть для отримання доступу до файлів.";
                 }
             }
         }
@@ -54,7 +53,7 @@ namespace ClientApp.Views
         {
             LoginButton.IsEnabled = false;
             LoadingPanel.Visibility = Visibility.Visible;
-            StatusText.Text = "Opening browser for authentication...";
+            StatusText.Text = "Відкриваю браузер для автентифікації...";
 
             try
             {
@@ -65,29 +64,29 @@ namespace ClientApp.Views
 
                 if (_oAuthService.IsAuthenticated)
                 {
-                    StatusText.Text = "Getting user information...";
+                    StatusText.Text = "Отримання даних користувача...";
                     var userInfo = await _oAuthService.GetUserInfoAsync();
 
                     if (userInfo != null)
                     {
-                        StatusText.Text = "Authentication successful!";
+                        StatusText.Text = "Автентифікація успішна!";
                         await Task.Delay(500);
 
                         OpenMainWindow(userInfo);
                     }
                     else
                     {
-                        ShowError("Failed to get user information. Please try again.");
+                        ShowError("Не знаю хто ви. Спробуйте знову.");
                     }
                 }
                 else
                 {
-                    ShowError("Authentication failed. Please try again.");
+                    ShowError("Невдалось автентифікувати. Спробуйте знову.");
                 }
             }
             catch (Exception ex)
             {
-                ShowError($"Error during authentication: {ex.Message}");
+                ShowError($"Помилка під час автентифікації: {ex.Message}");
             }
             finally
             {

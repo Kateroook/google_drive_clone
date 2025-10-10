@@ -135,7 +135,7 @@ namespace ClientApp
             }
             catch
             {
-                // Якщо налаштування не існують, використовуємо defaults
+                // defaults
             }
         }
 
@@ -201,7 +201,7 @@ namespace ClientApp
         {
             try
             {
-                StatusText.Text = "Loading...";
+                StatusText.Text = "Завантаження...";
 
                 List<FileItem> files;
 
@@ -231,8 +231,8 @@ namespace ClientApp
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                StatusText.Text = "Error";
+                MessageBox.Show($"Помилка: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusText.Text = "Помилка";
             }
         }
 
@@ -250,7 +250,7 @@ namespace ClientApp
                     filtered = _allFiles.Where(f => f.Extension == ".js");
                     break;
                 case 2:
-                    filtered = _allFiles.Where(f => f.IsImage);
+                    filtered = _allFiles.Where(f => f.Extension == ".png");
                     break;
                 case 3:
                     filtered = _allFiles.Where(f => f.IsCode);
@@ -311,7 +311,7 @@ namespace ClientApp
 
             if (ItemCountText != null)
             {
-                ItemCountText.Text = $"{_filteredFolders?.Count ?? 0} folders, {_filteredFiles?.Count ?? 0} files";
+                ItemCountText.Text = $"{_filteredFolders?.Count ?? 0} папок, {_filteredFiles?.Count ?? 0} файлів";
             }
         }
 
@@ -375,7 +375,7 @@ namespace ClientApp
                     FontSize = 14,
                     Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80)),
                     Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = $"Synced: {folder.SyncPath}"
+                    ToolTip = $"Синхронізовано з: {folder.SyncPath}"
                 });
             }
             Grid.SetColumn(nameStack, 0);
@@ -557,17 +557,17 @@ namespace ClientApp
 
             var menu = new ContextMenu();
 
-            var openItem = new MenuItem { Header = "Open" };
+            var openItem = new MenuItem { Header = "Відкрити" };
             openItem.Click += (s, ev) => OpenFolder(folder);
             menu.Items.Add(openItem);
 
-            var syncItem = new MenuItem { Header = folder.IsSynced ? "❌ Remove Sync" : "🔄 Setup Sync" };
+            var syncItem = new MenuItem { Header = folder.IsSynced ? "❌ Припинити синхронізацію" : "🔄 Налаштування синхронізації" };
             syncItem.Click += async (s, ev) => await ToggleFolderSync(folder);
             menu.Items.Add(syncItem);
 
             menu.Items.Add(new Separator());
 
-            var deleteItem = new MenuItem { Header = "🗑 Delete Folder", Foreground = Brushes.Red };
+            var deleteItem = new MenuItem { Header = "🗑 Видалити папку", Foreground = Brushes.Red };
             deleteItem.Click += async (s, ev) => await DeleteFolder(folder);
             menu.Items.Add(deleteItem);
 
@@ -581,13 +581,13 @@ namespace ClientApp
 
             var menu = new ContextMenu();
 
-            var downloadItem = new MenuItem { Header = "📥 Download" };
+            var downloadItem = new MenuItem { Header = "📥 Вивантажити" };
             downloadItem.Click += async (s, ev) => await DownloadFile(file);
             menu.Items.Add(downloadItem);
 
             menu.Items.Add(new Separator());
 
-            var deleteItem = new MenuItem { Header = "🗑 Delete", Foreground = Brushes.Red };
+            var deleteItem = new MenuItem { Header = "🗑 Видалити", Foreground = Brushes.Red };
             deleteItem.Click += async (s, ev) => await DeleteFile(file);
             menu.Items.Add(deleteItem);
 
@@ -607,7 +607,7 @@ namespace ClientApp
             {
                 var allFilesBtn = new Button
                 {
-                    Content = "📄 All Files",
+                    Content = "📄 Всі файли",
                     Style = (Style)FindResource("IconButton"),
                     Padding = new Thickness(12, 6, 12, 6),
                     FontWeight = FontWeights.SemiBold
@@ -618,7 +618,7 @@ namespace ClientApp
 
             var homeButton = new Button
             {
-                Content = "🏠 My Drive",
+                Content = "🏠 Головна",
                 Style = (Style)FindResource("IconButton"),
                 Padding = new Thickness(12, 6, 12, 6)
             };
@@ -701,7 +701,7 @@ namespace ClientApp
             var dialog = new OpenFileDialog { Multiselect = true };
             if (dialog.ShowDialog() == true)
             {
-                StatusText.Text = "Uploading...";
+                StatusText.Text = "Вивантаження на сервер...";
                 int count = 0;
                 foreach (var filePath in dialog.FileNames)
                 {
@@ -709,7 +709,7 @@ namespace ClientApp
                     if (result != null) count++;
                 }
                 await LoadDataAsync();
-                StatusText.Text = $"Uploaded {count} file(s)";
+                StatusText.Text = $"Вивантажено на сервер {count} файлів";
             }
         }
 
@@ -721,12 +721,12 @@ namespace ClientApp
                 var localPath = dialog.SelectedPath;
                 var folderName = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar));
 
-                StatusText.Text = $"Creating folder '{folderName}'...";
+                StatusText.Text = $"Створення папки '{folderName}'...";
 
                 var folder = await _fileService.CreateFolderAsync(folderName, _currentFolderId, localPath);
                 if (folder != null)
                 {
-                    StatusText.Text = "Uploading folder contents...";
+                    StatusText.Text = "Завантаження вмісту папки...";
 
                     var files = Directory.GetFiles(localPath);
                     int uploaded = 0;
@@ -743,14 +743,14 @@ namespace ClientApp
                     await _syncService.ConfigureSyncAsync(localPath, folder.Id, autoSync: true, performInitialSync: true);
 
                     await LoadDataAsync();
-                    MessageBox.Show($"Folder '{folderName}' created with {uploaded} files.\nAuto-sync enabled!",
+                    MessageBox.Show($"Папка '{folderName}' створена з {uploaded} файлами.\nАвто-синхронізація застосована!",
                         "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
         }
         private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new TextInputDialog("Enter folder name:");
+            var dialog = new TextInputDialog("Введіть назву папки:");
             if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.ResponseText))
             {
                 var folder = await _fileService.CreateFolderAsync(dialog.ResponseText, _currentFolderId);
@@ -778,11 +778,11 @@ namespace ClientApp
 
             if (syncedFolders.Count == 0)
             {
-                MessageBox.Show("No synced folders found", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Немає синхронізованих папок", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var message = "Synced Folders:\n\n" + string.Join("\n",
+            var message = "Синхронізовані папки:\n\n" + string.Join("\n",
                 syncedFolders.Select(f => $"📁 {f.Name}\n   ↔ {f.SyncPath}\n"));
             MessageBox.Show(message, "Synced Folders", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -796,7 +796,7 @@ namespace ClientApp
                 var success = await _fileService.DownloadFileAsync(file.Id, savePath);
                 if (success)
                 {
-                    MessageBox.Show($"File saved to:\n{savePath}", "Success",
+                    MessageBox.Show($"Файл збережено у:\n{savePath}", "Success",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
@@ -804,7 +804,7 @@ namespace ClientApp
 
         private async Task DeleteFile(FileItem file)
         {
-            var result = MessageBox.Show($"Delete '{file.Name}'?", "Confirm",
+            var result = MessageBox.Show($"Видалити '{file.Name}'?", "Confirm",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (result == MessageBoxResult.Yes)
@@ -820,7 +820,7 @@ namespace ClientApp
 
         private async Task DeleteFolder(FolderItem folder)
         {
-            var result = MessageBox.Show($"Delete folder '{folder.Name}' and all its contents?",
+            var result = MessageBox.Show($"Видалити папку '{folder.Name}' і весь її вміст?",
                 "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (result == MessageBoxResult.Yes)
@@ -829,7 +829,7 @@ namespace ClientApp
                 if (success)
                 {
                     await LoadDataAsync();
-                    MessageBox.Show("Folder deleted", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Папку видалено", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
         }
@@ -852,14 +852,14 @@ namespace ClientApp
             FileInfoPanel.Visibility = Visibility.Visible;
 
             FileNameInfo.Text = file.Name;
-            FileSizeInfo.Text = $"Size: {file.SizeFormatted}";
-            FileTypeInfo.Text = $"Type: {file.FileType}";
-            FileCreatedInfo.Text = $"Created: {file.CreatedAt:yyyy-MM-dd HH:mm:ss}";
-            FileUpdatedInfo.Text = $"Modified: {file.UpdatedAt:yyyy-MM-dd HH:mm:ss}";
-            FileUploaderInfo.Text = $"Uploaded by: {file.UploadedByName}";
+            FileSizeInfo.Text = $"Розмір: {file.SizeFormatted}";
+            FileTypeInfo.Text = $"Тип: {file.FileType}";
+            FileCreatedInfo.Text = $"Створено: {file.CreatedAt:yyyy-MM-dd HH:mm:ss}";
+            FileUpdatedInfo.Text = $"Редаговано: {file.UpdatedAt:yyyy-MM-dd HH:mm:ss}";
+            FileUploaderInfo.Text = $"Створив: {file.UploadedByName}";
             FileEditorInfo.Text = file.EditedByName != null
-                ? $"Edited by: {file.EditedByName}"
-                : "Not edited";
+                ? $"Редагував: {file.EditedByName}"
+                : "Без змін";
 
             ImagePreview.Visibility = Visibility.Collapsed;
             CodePreview.Visibility = Visibility.Collapsed;
@@ -1080,19 +1080,19 @@ namespace ClientApp
         {
             if (_currentFolder != null && !string.IsNullOrEmpty(_currentFolder.SyncPath))
             {
-                SyncStatusText.Text = $"Synced with:\n{_currentFolder.SyncPath}";
+                SyncStatusText.Text = $"Синхронізовано з:\n{_currentFolder.SyncPath}";
                 AutoSyncCheckBox.IsChecked = true;
                 AutoSyncCheckBox.IsEnabled = true;
             }
             else if (_currentFolder != null)
             {
-                SyncStatusText.Text = "Not synced\n(Enable auto-sync to choose folder)";
+                SyncStatusText.Text = "Несинхронізовано\n(Активуйте синхронізацію, щоб вибрати папку)";
                 AutoSyncCheckBox.IsChecked = false;
                 AutoSyncCheckBox.IsEnabled = true;
             }
             else
             {
-                SyncStatusText.Text = "Not synced\n(Open a folder first)";
+                SyncStatusText.Text = "Несинхронізовано\n(Відкрийте спершу папку)";
                 AutoSyncCheckBox.IsChecked = false;
                 AutoSyncCheckBox.IsEnabled = false;
             }
@@ -1255,7 +1255,7 @@ namespace ClientApp
 
         public TextInputDialog(string question)
         {
-            Title = "Input";
+            Title = "Введення";
             Width = 400;
             Height = 150;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -1269,7 +1269,7 @@ namespace ClientApp
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             var okButton = new Button { Content = "OK", Width = 80, Margin = new Thickness(0, 0, 10, 0) };
             okButton.Click += (s, e) => { DialogResult = true; Close(); };
-            var cancelButton = new Button { Content = "Cancel", Width = 80 };
+            var cancelButton = new Button { Content = "Скасувати", Width = 80 };
             cancelButton.Click += (s, e) => { DialogResult = false; Close(); };
 
             buttonPanel.Children.Add(okButton);
