@@ -31,6 +31,7 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
 });
 
+
 // 1. Отримання списку файлів
 router.get('/api/files', authenticateJWT, async (req, res) => {
   try {
@@ -49,10 +50,18 @@ router.get('/api/files', authenticateJWT, async (req, res) => {
     
     const params = [userId];
 
-    if (folderId) {
-      query += ' AND f.folder_id = ?';
-      params.push(folderId);
+    // Якщо folder_id передано явно (навіть якщо 'null' або '0')
+    if (folderId !== undefined) {
+      if (folderId === 'null' || folderId === '0' || folderId === '') {
+        // Тільки файли БЕЗ папки
+        query += ' AND f.folder_id IS NULL';
+      } else {
+        // Файли конкретної папки
+        query += ' AND f.folder_id = ?';
+        params.push(folderId);
+      }
     }
+    // Якщо folder_id не передано взагалі - повертаємо всі файли (для "All Files")
 
     query += ' ORDER BY f.created_at DESC';
 
@@ -276,7 +285,7 @@ router.get('/api/folders', authenticateJWT, async (req, res) => {
     const parentId = req.query.parent_id;
 
     let query = `
-      SELECT id, name, parent_id, created_at, updated_at
+      SELECT id, name, parent_id, created_at, updated_at, sync_path
       FROM folders
       WHERE user_id = ?
     `;
@@ -300,6 +309,34 @@ router.get('/api/folders', authenticateJWT, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching folders:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch folders' 
+    });
+  }
+});
+
+
+// Отримання ВСІХ папок користувача (незалежно від parent_id)
+router.get('/api/folders/all', authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const query = `
+      SELECT id, name, parent_id, sync_path, created_at, updated_at
+      FROM folders
+      WHERE user_id = ?
+      ORDER BY name ASC
+    `;
+    
+    const [folders] = await db.query(query, [userId]);
+    
+    res.json({
+      success: true,
+      data: folders
+    });
+  } catch (error) {
+    console.error('Error fetching all folders:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch folders' 
