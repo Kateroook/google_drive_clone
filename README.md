@@ -35,7 +35,7 @@ Full-stack cloud storage application with:
 
 ## Screenshots
 ### Web client
-![Web client](https://drive.google.com/file/d/1QN5_m6MNhSjAxdEVq7_6ka_Cqy05QpWD/view?usp=sharing)
+![Web client](https://github.com/user-attachments/assets/9f51a9ee-1d37-4527-b1d7-e82d67d815b8)
 
 ### Desktop client
-![Desktop client](https://drive.google.com/file/d/1HmSVXQf2WSgiM4wSRp6NnlBrA5-PmSJB/view?usp=sharing)
+![Desktop client](https://github.com/user-attachments/assets/3dddb00f-f5f8-4a9e-b315-7187b36baa10)
