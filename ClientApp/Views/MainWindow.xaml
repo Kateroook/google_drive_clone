@@ -1,0 +1,316 @@
+﻿<Window x:Class="ClientApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cool Drive" Height="850" Width="1600"
+        WindowStartupLocation="CenterScreen"
+        Background="#F8F9FA">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#5F6368"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="20" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F1F3F4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="#1A73E8"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1765CC"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64"/>
+            <RowDefinition Height="48"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="White" BorderBrush="#E8EAED" BorderThickness="0,0,0,1">
+            <Grid Margin="16,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="☁" FontSize="32" Foreground="#1A73E8" Margin="0,0,12,0"/>
+                    <TextBlock Text="Cool Drive" FontSize="22" Foreground="#202124" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Border Grid.Column="1" Background="#F1F3F4" CornerRadius="8" 
+                        MaxWidth="600" Height="48" Margin="48,0" VerticalAlignment="Center">
+                    <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0"
+                             VerticalContentAlignment="Center" Padding="16,0" FontSize="14"/>
+                </Border>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="UserNameText" Text="Користувач" Foreground="#5F6368" 
+                               VerticalAlignment="Center" Margin="0,0,16,0" FontSize="14"/>
+                    <Button Content="Вийти" Click="LogoutButton_Click"
+                            Background="Transparent" Foreground="#5F6368" 
+                            BorderThickness="1" BorderBrush="#DADCE0" Padding="16,8" Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="1" Background="White" Padding="20,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel x:Name="BreadcrumbsPanel" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="📤 Завантажити файл" Click="UploadButton_Click" 
+                            Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                    <Button Content="📁 Завантажити папка" Click="UploadFolderButton_Click" 
+                            Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                    <Button Content="➕ Нова папка" Click="NewFolderButton_Click" 
+                            Style="{StaticResource IconButton}"/>
+                    <Button Content="⚙️" Click="ColumnsButton_Click" 
+                            Style="{StaticResource IconButton}" ToolTip="Column Settings">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ColumnsMenu">
+                                <MenuItem Header="Розмір" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Size"/>
+                                <MenuItem Header="Створив" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Owner"/>
+                                <MenuItem Header="Створено" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Created"/>
+                                <MenuItem Header="Редаговано" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Modified"/>
+                                <MenuItem Header="Редагував" IsCheckable="True" IsChecked="True" 
+                                          Checked="ColumnVisibility_Changed" Unchecked="ColumnVisibility_Changed" Tag="Editor"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Content="🔄" Click="RefreshButton_Click" 
+                            Style="{StaticResource IconButton}" ToolTip="Refresh"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="360"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Sidebar -->
+            <Border Grid.Column="0" Background="White" Margin="8,0,4,8" CornerRadius="8">
+                <StackPanel Margin="8">
+                    <Button Content="🏠 Головна" Style="{StaticResource IconButton}" 
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" 
+                            Padding="12,10" Margin="0,8,0,4" Click="GoToRoot_Click" FontWeight="SemiBold"/>
+
+                    <Button Content="📄 Всі файли" Style="{StaticResource IconButton}" 
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" 
+                            Padding="12,10" Margin="0,0,0,4" Click="ShowAllFiles_Click"/>
+
+                    <Button Content="🔄 " Style="{StaticResource IconButton}" 
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" 
+                            Padding="12,10" Margin="0,0,0,4" Click="ShowSyncedFolders_Click"/>
+
+                    <Separator Margin="0,12"/>
+
+                    <TextBlock Text="Фільтр" FontWeight="SemiBold" Foreground="#202124" Margin="12,12,0,8"/>
+                    <ComboBox x:Name="FilterComboBox" Margin="8" SelectionChanged="FilterComboBox_SelectionChanged">
+                        <ComboBoxItem Content="Всі файли" IsSelected="True"/>
+                        <ComboBoxItem Content="JavaScript (.js)"/>
+                        <ComboBoxItem Content="Images (.png)"/>
+                        <ComboBoxItem Content="Код"/>
+                    </ComboBox>
+
+                    <TextBlock Text="Сортування" FontWeight="SemiBold" Foreground="#202124" Margin="12,12,0,8"/>
+                    <ComboBox x:Name="SortComboBox" Margin="8" SelectionChanged="SortComboBox_SelectionChanged">
+                        <ComboBoxItem Content="Тип (A-Z)" IsSelected="True"/>
+                        <ComboBoxItem Content="Тип (Z-A)" />                       
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Center - Files/Folders -->
+            <Border Grid.Column="1" Background="White" Margin="4,0,4,8" CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Headers -->
+                    <Border Grid.Row="0" Background="#F8F9FA" Padding="16,12" BorderBrush="#E8EAED" BorderThickness="0,0,0,1">
+                        <Grid x:Name="HeaderGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition x:Name="SizeColumn" Width="100"/>
+                                <ColumnDefinition x:Name="OwnerColumn" Width="120"/>
+                                <ColumnDefinition x:Name="CreatedColumn" Width="140"/>
+                                <ColumnDefinition x:Name="ModifiedColumn" Width="140"/>
+                                <ColumnDefinition x:Name="EditorColumn" Width="140"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Назва" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="SizeHeader" Grid.Column="1" Text="Розмір" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="OwnerHeader" Grid.Column="2" Text="Завантажив" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="CreatedHeader" Grid.Column="3" Text="Створено" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="ModifiedHeader" Grid.Column="4" Text="Оновлено" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                            <TextBlock x:Name="EditorHeader" Grid.Column="5" Text="Редагував" FontWeight="SemiBold" Foreground="#5F6368" FontSize="12"/>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ItemsPanel"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Right Panel -->
+            <Border Grid.Column="2" Background="White" Margin="4,0,8,8" CornerRadius="8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Деталі" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,16"/>
+
+                        <!-- Preview -->
+                        <Border x:Name="PreviewContainer" BorderBrush="#E8EAED" BorderThickness="1" 
+                                CornerRadius="4" Padding="16" Margin="0,0,0,16" Visibility="Collapsed">
+                            <StackPanel>
+                                <Image x:Name="ImagePreview" MaxHeight="200" Stretch="Uniform" Visibility="Collapsed"/>
+                                <!-- Code Editor -->
+                                <Grid x:Name="CodePreview" Visibility="Collapsed" Background="#1E1E1E" MaxHeight="400">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Line Numbers -->
+                                    <Border Grid.Column="0" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,1,0" Padding="8,8,12,8">
+                                        <TextBlock x:Name="LineNumbers" 
+                                                   FontFamily="Consolas" 
+                                                   FontSize="12" 
+                                                   Foreground="#858585"
+                                                   TextAlignment="Right"
+                                                   LineHeight="18"/>
+                                    </Border>
+
+                                    <!-- Code Content -->
+                                    <ScrollViewer Grid.Column="1" 
+                                                  VerticalScrollBarVisibility="Auto" 
+                                                  HorizontalScrollBarVisibility="Auto"
+                                                  Padding="12,8">
+                                        <TextBlock x:Name="CodeContent" 
+                                                   FontFamily="Consolas" 
+                                                   FontSize="12" 
+                                                   Foreground="#D4D4D4"
+                                                   TextWrapping="NoWrap"
+                                                   LineHeight="18"
+                                                   Background="Transparent"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- File Info -->
+                        <StackPanel x:Name="FileInfoPanel" Visibility="Collapsed">
+                            <TextBlock x:Name="FileNameInfo" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,12" FontSize="14"/>
+                            <TextBlock Text="Властивості" FontWeight="SemiBold" Margin="0,0,0,8" FontSize="12" Foreground="#5F6368"/>
+                            <TextBlock Text="Розмір" x:Name="FileSizeInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="FileTypeInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="FileCreatedInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="FileUpdatedInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="FileUploaderInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="FileEditorInfo" Foreground="#202124" FontSize="12" Margin="0,0,0,12"/>
+
+                            <Button Content="🗑 Видалити файл" Click="DeleteSelectedFile_Click" 
+                                    Style="{StaticResource IconButton}" HorizontalAlignment="Stretch" 
+                                    Foreground="#D32F2F" Margin="0,8,0,0"/>
+                        </StackPanel>
+                        <Separator Margin="0,16"/>
+
+                        <!-- Sync Panel -->
+                        <TextBlock Text="Синхронізація папки" FontSize="14" FontWeight="SemiBold" Margin="0,16,0,12"/>
+
+                        <Border Background="#F8F9FA" CornerRadius="4" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Статус" FontWeight="SemiBold" FontSize="11" Foreground="#5F6368" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="SyncStatusText" Text="Не синхронізовано" 
+                                           FontSize="12" Foreground="#202124" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                        <CheckBox x:Name="AutoSyncCheckBox" Content="Автоматична синхронізація папки" 
+                                  Margin="0,0,0,12" Checked="AutoSync_Changed" Unchecked="AutoSync_Changed"/>
+
+                        <TextBlock Text="Синхронізація" FontWeight="SemiBold" Margin="0,8,0,8" FontSize="12" Foreground="#5F6368"/>
+                        <Button Content="⬆ Завантажити на диск" Click="SyncUpload_Click" 
+                                Style="{StaticResource IconButton}" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+                        <Button Content="⬇ Завантажити на комп'ютер" Click="SyncDownload_Click" 
+                                Style="{StaticResource IconButton}" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+                        <Button Content="⬍⬌ Синхронізувати" Click="SyncBoth_Click" 
+                                Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="White" BorderBrush="#E8EAED" BorderThickness="0,1,0,0" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="StatusText" Text="Готово" Foreground="#5F6368" FontSize="12"/>
+                <TextBlock x:Name="ItemCountText" Grid.Column="1" Text="0 елементів" Foreground="#5F6368" FontSize="12"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
